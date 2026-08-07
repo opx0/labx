@@ -1,0 +1,24 @@
+# Postgres for the governance layer.
+# Bound to 127.0.0.1 only — nothing published to 0.0.0.0, matching the
+# convention used across these projects and the hardening applied to DataHub.
+# Host port 5435: 5432/5433 are conventional, 5434 is taken by repomind-db.
+services:
+  db:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: datahubx
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-datahubx_dev}
+      POSTGRES_DB: datahubx
+    ports:
+      - "127.0.0.1:5435:5432"
+    volumes:
+      - db-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U datahubx -d datahubx"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  db-data:

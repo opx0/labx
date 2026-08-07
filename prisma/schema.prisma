@@ -1,0 +1,206 @@
+// Invariants are enforced by the database, not by application discipline:
+// unique nonce, unique idempotency key, foreign keys, single-consumption state.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Decision {
+  ALLOW
+  REVIEW
+  BLOCK
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum AuthorizationState {
+  ISSUED
+  ACTIVE
+  CONSUMED
+  EXPIRED
+  REVOKED
+  INVALIDATED
+}
+
+enum ExecutionOutcome {
+  VERIFIED_SUCCESS
+  POSTCONDITION_FAILED
+  VERIFICATION_PENDING
+  EXECUTION_UNKNOWN
+  REFUSED
+}
+
+model Action {
+  id        String   @id @default(uuid())
+  principal String
+  type      String
+  target    String
+  params    Json
+  hash      String
+  status    String   @default("PROPOSED")
+  createdAt DateTime @default(now())
+
+  passports       Passport[]
+  policyDecisions PolicyDecision[]
+  approvals       Approval[]
+  authorizations  Authorization[]
+  executions      Execution[]
+
+  @@index([target])
+  @@map("actions")
+}
+
+model Passport {
+  id       String @id @default(uuid())
+  actionId String
+  action   Action @relation(fields: [actionId], references: [id], onDelete: Cascade)
+
+  target String
+  context Json
+  declaredFields String[]
+  fingerprint    String
+  schemaVersion  String
+  capturedAt     DateTime @default(now())
+
+  authorizations Authorization[]
+
+  @@index([fingerprint])
+  @@map("passports")
+}
+
+model PolicyDecision {
+  id       String @id @default(uuid())
+  actionId String
+  action   Action @relation(fields: [actionId], references: [id], onDelete: Cascade)
+
+  decision            Decision
+  risk                String
+  policyId            String
+  policyVersion       Int
+  reasons             String[]
+  matchedRules        String[]
+  contextDependencies String[]
+  evaluatedAt         DateTime @default(now())
+
+  approvals Approval[]
+
+  @@map("policy_decisions")
+}
+
+model Approval {
+  id       String @id @default(uuid())
+  actionId String
+  action   Action @relation(fields: [actionId], references: [id], onDelete: Cascade)
+
+  policyDecisionId String
+  policyDecision   PolicyDecision @relation(fields: [policyDecisionId], references: [id], onDelete: Cascade)
+
+  actionHash          String
+  passportFingerprint String
+  principal           String
+  approver            String
+  status              ApprovalStatus @default(PENDING)
+  requestedAt         DateTime       @default(now())
+  decidedAt           DateTime?
+
+  authorizations Authorization[]
+
+  @@map("approvals")
+}
+
+model Authorization {
+  id       String @id @default(uuid())
+  actionId String
+  action   Action @relation(fields: [actionId], references: [id], onDelete: Cascade)
+
+  passportId String
+  passport   Passport @relation(fields: [passportId], references: [id], onDelete: Cascade)
+
+  approvalId String
+  approval   Approval @relation(fields: [approvalId], references: [id], onDelete: Cascade)
+
+  principal           String
+  actionType          String
+  target              String
+  actionHash          String
+  passportFingerprint String
+  policyId            String
+  policyVersion       Int
+
+  nonce     String             @unique
+  signature String
+  state     AuthorizationState @default(ACTIVE)
+  issuedAt  DateTime           @default(now())
+  expiresAt DateTime
+  consumedAt DateTime?
+
+  executions Execution[]
+
+  @@index([state, expiresAt])
+  @@map("authorizations")
+}
+
+model Execution {
+  id              String        @id @default(uuid())
+  authorizationId String
+  authorization   Authorization @relation(fields: [authorizationId], references: [id], onDelete: Cascade)
+
+  actionId String
+  action   Action @relation(fields: [actionId], references: [id], onDelete: Cascade)
+
+  idempotencyKey String @unique
+
+  outcome     ExecutionOutcome
+  errorCode   String?
+  startedAt   DateTime         @default(now())
+  finishedAt  DateTime?
+
+  receipt Receipt?
+
+  @@map("executions")
+}
+
+model Receipt {
+  id          String    @id @default(uuid())
+  executionId String    @unique
+  execution   Execution @relation(fields: [executionId], references: [id], onDelete: Cascade)
+
+  target                 String
+  actionType             String
+  params                 Json
+  fingerprintAtExecution String
+  postcondition          String
+  verification           String
+  observedAfter          Json
+  createdAt              DateTime @default(now())
+
+  @@map("receipts")
+}
+
+/// Append-only: corrections are new events, never edits.
+model AuditEvent {
+  id       String   @id @default(uuid())
+  at       DateTime @default(now())
+  type     String
+  severity String
+  detail   String
+
+  actionId        String?
+  passportId      String?
+  approvalId      String?
+  authorizationId String?
+  executionId     String?
+
+  @@index([at])
+  @@index([actionId])
+  @@map("audit_events")
+}
