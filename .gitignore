@@ -1,0 +1,13 @@
+node_modules/
+.next/
+.env
+.env.local
+*.tsbuildinfo
+next-env.d.ts
+.scratch/tmp/
+
+# Local working artifacts — deliberately not part of the published project
+AGENTS.md
+CLAUDE.md
+.scratch/
+phase_75_final_master_execution_document(1).md
