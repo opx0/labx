@@ -1500,3 +1500,14 @@ details.cl-card[open] .cl-caret {
     background-position: -200% 0;
   }
 }
+
+.custom-path-open {
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+}
+.custom-path-open h2 {
+  margin: 0 0 8px;
+  font-size: 17px;
+  font-weight: 650;
+}

@@ -183,16 +183,18 @@ export default async function Page() {
 
       <div className="wrap" id="top">
         <header className="top">
-          <span className="eyebrow">A live, 20-second safety demo</span>
-          <h1>Stop AI agents acting on stale approval.</h1>
+          <span className="eyebrow">Context-bound authorization · live against a real DataHub</span>
+          <h1>Stale authority dies here.</h1>
           <p>
-            DataHubX lets an agent propose a change, then checks the live data again just before it
-            acts. If the world changed after a human said yes, the action is stopped. No setup or
-            project knowledge needed.{" "}
+            Every approval workflow has the same hole: the gap between the yes and the execution.
+            DataHubX binds a human&apos;s approval to a cryptographic fingerprint of the world they
+            actually saw — and the Gateway re-reads DataHub immediately before any mutation. Same
+            world: execute once, verify by reading back. Changed world: the approval is permanently
+            dead and nothing is touched.{" "}
             <a href="https://catalog.opxz.dev/demo-login" target="_blank" rel="noreferrer">
-              View the live catalog
+              Open the live catalog
             </a>{" "}
-            after a run if you want to verify it yourself.
+            and verify every claim yourself — the proof below runs in about 20 seconds.
           </p>
         </header>
 
@@ -314,15 +316,18 @@ export default async function Page() {
                 <li>Approval is tied to the exact data it was based on.</li>
                 <li>A changed world makes that approval unusable.</li>
               </ul>
-              <details className="custom-path">
-                <summary>Or try your own action</summary>
-                <p>Pick a dataset and action; the policy result tells you what happens next.</p>
+              <div className="custom-path-open">
+                <h2>Or run your own action</h2>
+                <p className="note" style={{ marginTop: 0 }}>
+                  Pick any discovered dataset and action; the policy result tells you what happens
+                  next.
+                </p>
                 <DirectProposalForm
                   estate={estate}
                   targetUrn={s.targetUrn}
                   actionType={s.actionType}
                 />
-              </details>
+              </div>
             </div>
           </section>
         )}
@@ -335,249 +340,240 @@ export default async function Page() {
                 currentContext={s.currentContext}
               />
             )}
-            <details className="workbench-details" open={!drifted}>
-              <summary>
-                {drifted
-                  ? "Inspect the live evidence and explore manually"
-                  : "Live action workbench"}
-              </summary>
-              {drifted && (
-                <p className="workbench-intro">
-                  The evidence below is the exact context and audit trail used by this run. You can
-                  also try a different governed action.
-                </p>
-              )}
-              <div className="grid">
-                <div>
-                  <div className="panel">
-                    <h2>Try another action</h2>
-                    <form action={askAgentAction}>
-                      <label htmlFor="intent">Tell the agent what you want to change</label>
-                      <input
-                        id="intent"
-                        name="intent"
-                        defaultValue="Retire customer_prod, it is being decommissioned."
-                      />
-                      <SubmitButton
-                        className="btn primary"
-                        pendingLabel="Agent reading DataHub, planning…"
-                      >
-                        Ask the agent
-                        <small>It can read DataHub and propose, but cannot change it</small>
-                      </SubmitButton>
-                    </form>
-                    {s.agentExplanation !== null && (
-                      <details className="agent-reasoning">
-                        <summary>Agent reasoning</summary>
-                        <p>{s.agentExplanation}</p>
-                      </details>
+            <h2 className="arch-h2" style={{ marginTop: 32 }}>
+              {drifted ? "The live evidence — and the full workbench" : "Live action workbench"}
+            </h2>
+            {drifted && (
+              <p className="workbench-intro">
+                The evidence below is the exact context and audit trail used by this run. You can
+                also try a different governed action.
+              </p>
+            )}
+            <div className="grid">
+              <div>
+                <div className="panel">
+                  <h2>Try another action</h2>
+                  <form action={askAgentAction}>
+                    <label htmlFor="intent">Tell the agent what you want to change</label>
+                    <input
+                      id="intent"
+                      name="intent"
+                      defaultValue="Retire customer_prod, it is being decommissioned."
+                    />
+                    <SubmitButton
+                      className="btn primary"
+                      pendingLabel="Agent reading DataHub, planning…"
+                    >
+                      Ask the agent
+                      <small>It can read DataHub and propose, but cannot change it</small>
+                    </SubmitButton>
+                  </form>
+                  {s.agentExplanation !== null && (
+                    <details className="agent-reasoning" open>
+                      <summary>Agent reasoning</summary>
+                      <p>{s.agentExplanation}</p>
+                    </details>
+                  )}
+                  <p className="note">
+                    The agent can inspect DataHub and propose an action. It has no tool that mutates
+                    DataHub.
+                  </p>
+                </div>
+
+                <div className="panel" style={{ marginTop: 28 }}>
+                  <h2>Choose an action yourself</h2>
+                  <DirectProposalForm
+                    estate={estate}
+                    targetUrn={s.targetUrn}
+                    actionType={s.actionType}
+                  />
+                </div>
+
+                <div className="panel" style={{ marginTop: 28 }}>
+                  <h2>Govern</h2>
+                  <form action={approveAction}>
+                    <SubmitButton
+                      disabled={s.phase !== "AWAITING_APPROVAL"}
+                      pendingLabel="Issuing signed authorization…"
+                    >
+                      Approve
+                      <small>Binds authority to this fingerprint</small>
+                    </SubmitButton>
+                  </form>
+                  <form action={rejectAction}>
+                    <SubmitButton
+                      disabled={s.phase !== "AWAITING_APPROVAL"}
+                      pendingLabel="Persisting rejection…"
+                    >
+                      Reject
+                      <small>Persists a REJECTED approval — no authority</small>
+                    </SubmitButton>
+                  </form>
+                  <form action={injectDriftAction}>
+                    <SubmitButton
+                      className="btn warn"
+                      disabled={!canDrift}
+                      pendingLabel="Mutating DataHub lineage…"
+                    >
+                      Change the world
+                      <small>Adds a 3rd critical dependency to customer_prod</small>
+                    </SubmitButton>
+                  </form>
+                  <form action={executeAction}>
+                    <SubmitButton
+                      className="btn primary"
+                      disabled={!hasAuth}
+                      pendingLabel="Gateway re-reading context…"
+                    >
+                      Execute via Gateway
+                      <small>Re-reads context, then decides</small>
+                    </SubmitButton>
+                  </form>
+                  <form action={revokeAction}>
+                    <SubmitButton disabled={!hasAuth} pendingLabel="Revoking in Postgres…">
+                      Revoke authorization
+                      <small>Human withdraws authority before execution</small>
+                    </SubmitButton>
+                  </form>
+                  <form action={replanAction}>
+                    <SubmitButton
+                      disabled={!canReplan}
+                      pendingLabel="Fresh Passport against new world…"
+                    >
+                      Replan
+                      <small>Fresh Passport against the new world</small>
+                    </SubmitButton>
+                  </form>
+                  <form action={refreshAction}>
+                    <SubmitButton className="btn ghost" pendingLabel="Re-reading context…">
+                      Refresh current context
+                    </SubmitButton>
+                  </form>
+                  <form action={resetAction}>
+                    <SubmitButton className="btn ghost" pendingLabel="Resetting DataHub baseline…">
+                      Reset demo
+                    </SubmitButton>
+                  </form>
+                  <p className="note">
+                    Every action uses the live demo DataHub. The drift step deliberately simulates
+                    an outside actor changing that real data.
+                  </p>
+                </div>
+              </div>
+
+              <div>
+                <div className="panel">
+                  <h2>Action detail</h2>
+                  <div className="meta">
+                    <span>
+                      action <b>{s.actionType}</b>
+                    </span>
+                    <span>
+                      target <b>{s.targetLabel}</b>
+                    </span>
+                    <span>
+                      phase <b>{s.phase}</b>
+                    </span>
+                    {s.authorizationLabel && (
+                      <span>
+                        authorization <b>{s.authorizationLabel}</b>
+                      </span>
                     )}
-                    <p className="note">
-                      The agent can inspect DataHub and propose an action. It has no tool that
-                      mutates DataHub.
-                    </p>
                   </div>
 
-                  <div className="panel" style={{ marginTop: 28 }}>
-                    <h2>Choose an action yourself</h2>
-                    <DirectProposalForm
-                      estate={estate}
-                      targetUrn={s.targetUrn}
-                      actionType={s.actionType}
+                  {s.decision && (
+                    <>
+                      <div className="decision">
+                        <span className={`pill ${s.decision.decision}`}>{s.decision.decision}</span>
+                        <span style={{ color: "var(--muted)", fontSize: 15 }}>
+                          risk {s.decision.risk} · policy {s.decision.policyId} v
+                          {s.decision.policyVersion}
+                        </span>
+                      </div>
+                      {s.decision.reasons.length > 0 && (
+                        <ul className="reasons">
+                          {s.decision.reasons.map((r) => (
+                            <li key={r}>{r}</li>
+                          ))}
+                        </ul>
+                      )}
+                    </>
+                  )}
+
+                  <div className="cmp" style={{ marginTop: 20 }}>
+                    <ContextTable
+                      title="Approved context"
+                      context={s.approvedContext}
+                      fingerprint={s.approvedFingerprint}
+                    />
+                    <ContextTable
+                      title="Current context"
+                      context={s.currentContext}
+                      fingerprint={s.currentFingerprint}
+                      compareWith={s.approvedContext}
                     />
                   </div>
 
-                  <div className="panel" style={{ marginTop: 28 }}>
-                    <h2>Govern</h2>
-                    <form action={approveAction}>
-                      <SubmitButton
-                        disabled={s.phase !== "AWAITING_APPROVAL"}
-                        pendingLabel="Issuing signed authorization…"
-                      >
-                        Approve
-                        <small>Binds authority to this fingerprint</small>
-                      </SubmitButton>
-                    </form>
-                    <form action={rejectAction}>
-                      <SubmitButton
-                        disabled={s.phase !== "AWAITING_APPROVAL"}
-                        pendingLabel="Persisting rejection…"
-                      >
-                        Reject
-                        <small>Persists a REJECTED approval — no authority</small>
-                      </SubmitButton>
-                    </form>
-                    <form action={injectDriftAction}>
-                      <SubmitButton
-                        className="btn warn"
-                        disabled={!canDrift}
-                        pendingLabel="Mutating DataHub lineage…"
-                      >
-                        Change the world
-                        <small>Adds a 3rd critical dependency to customer_prod</small>
-                      </SubmitButton>
-                    </form>
-                    <form action={executeAction}>
-                      <SubmitButton
-                        className="btn primary"
-                        disabled={!hasAuth}
-                        pendingLabel="Gateway re-reading context…"
-                      >
-                        Execute via Gateway
-                        <small>Re-reads context, then decides</small>
-                      </SubmitButton>
-                    </form>
-                    <form action={revokeAction}>
-                      <SubmitButton disabled={!hasAuth} pendingLabel="Revoking in Postgres…">
-                        Revoke authorization
-                        <small>Human withdraws authority before execution</small>
-                      </SubmitButton>
-                    </form>
-                    <form action={replanAction}>
-                      <SubmitButton
-                        disabled={!canReplan}
-                        pendingLabel="Fresh Passport against new world…"
-                      >
-                        Replan
-                        <small>Fresh Passport against the new world</small>
-                      </SubmitButton>
-                    </form>
-                    <form action={refreshAction}>
-                      <SubmitButton className="btn ghost" pendingLabel="Re-reading context…">
-                        Refresh current context
-                      </SubmitButton>
-                    </form>
-                    <form action={resetAction}>
-                      <SubmitButton
-                        className="btn ghost"
-                        pendingLabel="Resetting DataHub baseline…"
-                      >
-                        Reset demo
-                      </SubmitButton>
-                    </form>
+                  {s.decision && (
                     <p className="note">
-                      Every action uses the live demo DataHub. The drift step deliberately simulates
-                      an outside actor changing that real data.
+                      Only these fields are fingerprinted — they are exactly what the matched policy
+                      rules declare they depend on. An unrelated metadata edit does not invalidate
+                      authority.
                     </p>
-                  </div>
+                  )}
                 </div>
 
-                <div>
-                  <div className="panel">
-                    <h2>Action detail</h2>
-                    <div className="meta">
-                      <span>
-                        action <b>{s.actionType}</b>
-                      </span>
-                      <span>
-                        target <b>{s.targetLabel}</b>
-                      </span>
-                      <span>
-                        phase <b>{s.phase}</b>
-                      </span>
-                      {s.authorizationLabel && (
-                        <span>
-                          authorization <b>{s.authorizationLabel}</b>
-                        </span>
-                      )}
-                    </div>
+                <div className="panel" style={{ marginTop: 28 }} id="policy">
+                  <h2>
+                    Policy in force — {DEFAULT_POLICY_SET.id} v{DEFAULT_POLICY_SET.version}
+                  </h2>
+                  <p className="note">
+                    Deterministic rules; the LLM cannot override them. Each rule declares the
+                    context fields it depends on — exactly those fields are fingerprinted into the
+                    Passport, and a signed authorization dies if the policy set itself changes.
+                  </p>
+                  <table className="policy">
+                    <tbody>
+                      {DEFAULT_POLICY_SET.rules.map((r) => (
+                        <tr key={r.id}>
+                          <td className="k">{r.id}</td>
+                          <td>
+                            <span className={`pill ${r.decision}`}>{r.decision}</span>
+                          </td>
+                          <td className="v">
+                            {r.description}
+                            <div style={{ color: "var(--muted)", fontSize: 13.5 }}>
+                              depends on: {r.dependsOn.join(", ")} · risk {r.risk}
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
 
-                    {s.decision && (
-                      <>
-                        <div className="decision">
-                          <span className={`pill ${s.decision.decision}`}>
-                            {s.decision.decision}
-                          </span>
-                          <span style={{ color: "var(--muted)", fontSize: 15 }}>
-                            risk {s.decision.risk} · policy {s.decision.policyId} v
-                            {s.decision.policyVersion}
-                          </span>
-                        </div>
-                        {s.decision.reasons.length > 0 && (
-                          <ul className="reasons">
-                            {s.decision.reasons.map((r) => (
-                              <li key={r}>{r}</li>
-                            ))}
-                          </ul>
-                        )}
-                      </>
-                    )}
-
-                    <div className="cmp" style={{ marginTop: 20 }}>
-                      <ContextTable
-                        title="Approved context"
-                        context={s.approvedContext}
-                        fingerprint={s.approvedFingerprint}
-                      />
-                      <ContextTable
-                        title="Current context"
-                        context={s.currentContext}
-                        fingerprint={s.currentFingerprint}
-                        compareWith={s.approvedContext}
-                      />
-                    </div>
-
-                    {s.decision && (
-                      <p className="note">
-                        Only these fields are fingerprinted — they are exactly what the matched
-                        policy rules declare they depend on. An unrelated metadata edit does not
-                        invalidate authority.
-                      </p>
-                    )}
-                  </div>
-
-                  <div className="panel" style={{ marginTop: 28 }} id="policy">
-                    <h2>
-                      Policy in force — {DEFAULT_POLICY_SET.id} v{DEFAULT_POLICY_SET.version}
-                    </h2>
-                    <p className="note">
-                      Deterministic rules; the LLM cannot override them. Each rule declares the
-                      context fields it depends on — exactly those fields are fingerprinted into the
-                      Passport, and a signed authorization dies if the policy set itself changes.
-                    </p>
-                    <table className="policy">
-                      <tbody>
-                        {DEFAULT_POLICY_SET.rules.map((r) => (
-                          <tr key={r.id}>
-                            <td className="k">{r.id}</td>
-                            <td>
-                              <span className={`pill ${r.decision}`}>{r.decision}</span>
-                            </td>
-                            <td className="v">
-                              {r.description}
-                              <div style={{ color: "var(--muted)", fontSize: 13.5 }}>
-                                depends on: {r.dependsOn.join(", ")} · risk {r.risk}
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-
-                  <div className="panel timeline" style={{ marginTop: 28 }} id="audit">
-                    <h2>Audit timeline</h2>
-                    <p className="note">
-                      Every event is persisted to Postgres with links to the action, approval,
-                      authorization and execution it concerns — the trail survives restarts.
-                    </p>
-                    {s.events.length === 0 ? (
-                      <div className="empty">No events yet — propose an action to begin.</div>
-                    ) : (
-                      <ol>
-                        {s.events.map((e) => (
-                          <li key={e.id} className={e.severity}>
-                            <span className="t">{new Date(e.at).toISOString().slice(11, 19)}</span>
-                            <span className="e">{e.type}</span>
-                            <span className="d">{e.detail}</span>
-                          </li>
-                        ))}
-                      </ol>
-                    )}
-                  </div>
+                <div className="panel timeline" style={{ marginTop: 28 }} id="audit">
+                  <h2>Audit timeline</h2>
+                  <p className="note">
+                    Every event is persisted to Postgres with links to the action, approval,
+                    authorization and execution it concerns — the trail survives restarts.
+                  </p>
+                  {s.events.length === 0 ? (
+                    <div className="empty">No events yet — propose an action to begin.</div>
+                  ) : (
+                    <ol>
+                      {s.events.map((e) => (
+                        <li key={e.id} className={e.severity}>
+                          <span className="t">{new Date(e.at).toISOString().slice(11, 19)}</span>
+                          <span className="e">{e.type}</span>
+                          <span className="d">{e.detail}</span>
+                        </li>
+                      ))}
+                    </ol>
+                  )}
                 </div>
               </div>
-            </details>
+            </div>
           </section>
         )}
       </div>
