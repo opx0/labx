@@ -3,6 +3,27 @@
 # convention used across these projects and the hardening applied to DataHub.
 # Host port 5435: 5432/5433 are conventional, 5434 is taken by repomind-db.
 services:
+  # The whole governance console in one container:
+  #   docker compose --profile full up --build
+  # DataHub itself runs separately (see README: `datahub docker quickstart`);
+  # the app reaches it on the host via host.docker.internal.
+  app:
+    profiles: ["full"]
+    build: .
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      DATABASE_URL: postgresql://datahubx:${POSTGRES_PASSWORD:-datahubx_dev}@db:5432/datahubx
+      DATAHUB_GMS_URL: ${DATAHUB_GMS_URL:-http://host.docker.internal:8080}
+      DATAHUB_TOKEN: ${DATAHUB_TOKEN:-}
+      GOOGLE_GENERATIVE_AI_API_KEY: ${GOOGLE_GENERATIVE_AI_API_KEY:-}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      db:
+        condition: service_healthy
+
   db:
     image: postgres:18-alpine
     restart: unless-stopped

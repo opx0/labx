@@ -2,6 +2,24 @@
 
 Copy-paste material for the hackathon submission form, the live demo, and judge Q&A.
 
+## "Which DataHub technologies did you use?" — honest answer
+
+Select:
+
+- **DataHub OSS / Core Platform** — self-hosted v1.7 with auth enforced; OpenAPI v3 aspect
+  reads feed the security-critical Passport (datasetKey, globalTags, deprecation,
+  upstreamLineage); GraphQL drives governed mutations, posts, and context documents; lineage,
+  domains, glossary, ownership and deprecation provenance are all exercised live.
+- **DataHub MCP Server** — the agent's entire discovery surface is the official
+  `mcp-server-datahub`, version-pinned, mutation tools disabled, its six read tools
+  allowlisted at runtime (both enforced by tests).
+- **Other** — the `acryl-datahub` Python SDK powers the reproducible estate seeding
+  (`scripts/seed_demo.py`, `scripts/seed_showcase.py`).
+
+Do NOT select Agent Context Kit (its LangChain/ADK/Snowflake SDK integrations are not used),
+DataHub Skills (compatible and referenced in the README, but not load-bearing in the product),
+or Analytics Agent. Overclaiming is easy for a judge to disprove in one grep.
+
 ## Short description (≤ 3 sentences)
 
 DataHubX is context-bound authorization for AI agents performing real DataHub mutations: a

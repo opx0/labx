@@ -35,9 +35,9 @@ body {
 }
 
 .wrap {
-  max-width: 1440px;
+  max-width: 1600px;
   margin: 0 auto;
-  padding: 40px 32px 96px;
+  padding: 40px clamp(20px, 3vw, 48px) 96px;
 }
 
 header.top {
@@ -464,9 +464,9 @@ html {
   border-bottom: 1px solid var(--line);
 }
 .topbar-inner {
-  max-width: 1440px;
+  max-width: 1600px;
   margin: 0 auto;
-  padding: 12px 32px;
+  padding: 12px clamp(20px, 3vw, 48px);
   display: flex;
   align-items: center;
   justify-content: space-between;

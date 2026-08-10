@@ -94,6 +94,25 @@ Typical output:
 
 ## Run it locally
 
+### Fastest path — everything in Docker
+
+Three commands give you the whole thing: DataHub, the governance database, and the console.
+
+```bash
+# 1. DataHub itself (official quickstart), then enable auth + mint a token — see below
+pip install acryl-datahub && datahub docker quickstart
+
+# 2. The DataHubX stack: Postgres + the console, migrations applied automatically
+DATAHUB_TOKEN=<your-pat> docker compose --profile full up --build -d
+
+# 3. Seed the demo estate
+python scripts/seed_demo.py && python scripts/seed_showcase.py
+```
+
+Console: http://localhost:3000. The container reaches DataHub on the host via
+`host.docker.internal` (override with `DATAHUB_GMS_URL` if yours lives elsewhere).
+Prefer running the app on the host? Follow the manual path below.
+
 ### Prerequisites
 
 - Bun 1.x
