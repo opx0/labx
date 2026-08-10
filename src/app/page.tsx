@@ -14,6 +14,7 @@ import {
   revokeAction,
 } from "./actions";
 import { SubmitButton } from "./submit-button";
+import { TopBar } from "./topbar";
 
 export const dynamic = "force-dynamic";
 
@@ -81,31 +82,7 @@ export default async function Page() {
 
   return (
     <div>
-      <nav className="topbar">
-        <div className="topbar-inner">
-          <a className="brand" href="#top">
-            <span className="brand-dot" />
-            DataHubX
-          </a>
-          <div className="nav-pills">
-            <a href="#console">Console</a>
-            <a href="#architecture">Architecture</a>
-            <a href="#policy">Policy</a>
-            <a href="#audit">Audit</a>
-            <a href="https://github.com/opx0/labx" target="_blank" rel="noreferrer">
-              GitHub
-            </a>
-          </div>
-          <a
-            className="nav-cta"
-            href="https://catalog.opxz.dev/demo-login"
-            target="_blank"
-            rel="noreferrer"
-          >
-            Open catalog
-          </a>
-        </div>
-      </nav>
+      <TopBar />
 
       <div className="wrap" id="top">
         <header className="top">
@@ -444,53 +421,6 @@ export default async function Page() {
             </div>
           </div>
         </div>
-
-        <section className="panel arch" id="architecture">
-          <h2>The system — one authority path, every check enforced</h2>
-          <p className="note" style={{ marginTop: 0 }}>
-            From natural-language intent to a verified mutation. Green survives every gate; anything
-            else dies exactly where it fails.
-          </p>
-          <div className="flow">
-            <span className="node">
-              Intent<small>natural language</small>
-            </span>
-            <span className="arrow">→</span>
-            <span className="node">
-              Agent<small>reads via DataHub MCP · no write tool</small>
-            </span>
-            <span className="arrow">→</span>
-            <span className="node">
-              Context Passport<small>SHA-256 over declared fields</small>
-            </span>
-            <span className="arrow">→</span>
-            <span className="node">
-              Policy<small>ALLOW · REVIEW · BLOCK</small>
-            </span>
-            <span className="arrow">→</span>
-            <span className="node">
-              Human approval<small>or rejection — persisted</small>
-            </span>
-            <span className="arrow">→</span>
-            <span className="node">
-              Signed authorization<small>Ed25519 · 15 min · single use</small>
-            </span>
-            <span className="arrow">→</span>
-            <span className="node gate">
-              Gateway<small>re-reads DataHub, recomputes everything</small>
-            </span>
-          </div>
-          <div className="split">
-            <div className="branch good-b">
-              <b>Fingerprint matches</b> → consume once → mutate DataHub → read state back →
-              VERIFIED_SUCCESS → receipt with provenance
-            </div>
-            <div className="branch bad-b">
-              <b>World changed</b> → CONTEXT_DRIFT → authorization INVALIDATED forever → DataHub
-              untouched → agent replans against reality
-            </div>
-          </div>
-        </section>
       </div>
     </div>
   );
