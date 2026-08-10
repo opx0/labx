@@ -14,15 +14,11 @@ refuses if reality has moved.
 | | |
 |---|---|
 | Governance console | **https://app.opxz.dev** — no login |
-| The DataHub it drives | **https://catalog.opxz.dev** — sign in `datahub` / `datahub` |
+| The DataHub it drives | **https://catalog.opxz.dev** — sign in `judge` / `judge` |
 
 Drive the console, then open the catalog and check `customer_prod` yourself: the deprecation is
 real, and its note carries the approval id, principal, policy version and passport fingerprint
 that authorised it.
-
-DataHub sign-in is deliberately left on. It ships with `METADATA_SERVICE_AUTH_ENABLED=false`,
-meaning tokens are ignored and anonymous requests succeed; we turned it on. Leaving a mutable
-catalog open to the internet would contradict the entire point of this project.
 
 ---
 
