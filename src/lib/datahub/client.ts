@@ -11,6 +11,12 @@ import {
 // removed edge within 30s and once returned the correct count over the wrong
 // set. Aspect reads tracked the same changes in ~100-180ms. Search is fine for
 // agent discovery; it must not feed a security decision.
+//
+// This client is READ-ONLY by construction: it has no GraphQL method and no
+// mutation path. Holding a DataHubClient is not a write capability. Governed
+// writes exist only in datahub/mutations.ts (imported only by the Gateway);
+// the one other write path, demo/out-of-band.ts, deliberately simulates a
+// third party outside the governed system. Both import graphs are test-pinned.
 
 export const CRITICAL_TAG = "urn:li:tag:Critical";
 
@@ -56,19 +62,6 @@ export class DataHubClient {
     if (res.status === 404) return null;
     if (!res.ok) throw new DataHubError(`aspect read failed for ${urn}`, res.status);
     return res.json() as Promise<Aspects>;
-  }
-
-  async graphql<T>(query: string, variables: Record<string, unknown> = {}): Promise<T> {
-    const res = await fetch(`${this.config.gmsUrl}/api/graphql`, {
-      method: "POST",
-      headers: this.headers,
-      body: JSON.stringify({ query, variables }),
-    });
-    if (!res.ok) throw new DataHubError("graphql request failed", res.status);
-    const body = (await res.json()) as { data?: T; errors?: { message: string }[] };
-    if (body.errors?.length) throw new DataHubError(body.errors.map((e) => e.message).join("; "));
-    if (!body.data) throw new DataHubError("graphql returned no data");
-    return body.data;
   }
 
   private static tags(a: Aspects): string[] {

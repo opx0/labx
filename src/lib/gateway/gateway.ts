@@ -1,8 +1,13 @@
-import type { DataHubClient } from "@/lib/datahub/client";
+import type { DataHubConfig } from "@/lib/datahub/client";
 import { executeMutation } from "@/lib/datahub/mutations";
-import { ACTION_REGISTRY, type ActionType, isActionType } from "@/lib/domain/actions";
+import {
+  ACTION_REGISTRY,
+  type ActionType,
+  isActionType,
+  validateAction,
+} from "@/lib/domain/actions";
 import { type SignedAuthorization, verifySignature } from "@/lib/domain/authorization";
-import { fingerprint, UnreadableContextError } from "@/lib/domain/canonical";
+import { fingerprint, hashRecord, UnreadableContextError } from "@/lib/domain/canonical";
 import type { Context } from "@/lib/domain/context";
 
 // The only privileged mutation path. Never trusts a caller-supplied Passport —
@@ -41,6 +46,8 @@ export type Receipt = {
   readonly postcondition: string;
   readonly verification: VerificationOutcome;
   readonly observedAfter: Record<string, unknown>;
+  /** The provider's error, preserved for the audit trail. Null on a clean call. */
+  readonly providerError: string | null;
   readonly executedAt: number;
 };
 
@@ -62,11 +69,25 @@ export type GatewayResult =
 export interface AuthorizationStore {
   /** Atomic ACTIVE -> CONSUMED. Exactly one concurrent caller may see true. */
   consume(authorizationId: string): Promise<boolean>;
+  /** Atomic ACTIVE -> INVALIDATED. Stale authority dies permanently. */
+  invalidate(authorizationId: string): Promise<boolean>;
   getState(authorizationId: string): Promise<string | null>;
 }
 
+/** The only DataHub capability the Gateway grants its collaborators: reads. */
+export interface ContextReader {
+  readContext(
+    target: string,
+    fields: readonly string[],
+    candidates: readonly string[],
+  ): Promise<Context>;
+  readVerificationState(target: string): Promise<Record<string, unknown>>;
+}
+
 export type GatewayDeps = {
-  readonly client: DataHubClient;
+  readonly client: ContextReader;
+  /** Write credentials. Only the Gateway holds these next to a mutation path. */
+  readonly datahub: DataHubConfig;
   readonly store: AuthorizationStore;
   readonly publicKeyPem: string;
   readonly now: () => number;
@@ -79,7 +100,6 @@ export type ExecuteRequest = {
   readonly actionType: string;
   readonly target: string;
   readonly params: Record<string, string>;
-  readonly actionHash: string;
   readonly contextDependencies: readonly string[];
   /** Display only on drift; never trusted for the decision. */
   readonly approvedContext?: Context;
@@ -112,8 +132,17 @@ export async function executeAuthorizedAction(
   if (c.principal !== req.principal) return fail("AUTHORIZATION_INVALID", "principal mismatch");
   if (c.actionType !== req.actionType) return fail("AUTHORIZATION_INVALID", "action mismatch");
   if (c.target !== req.target) return fail("AUTHORIZATION_INVALID", "target mismatch");
-  if (c.actionHash !== req.actionHash) return fail("AUTHORIZATION_INVALID", "parameter mismatch");
   if (!isActionType(req.actionType)) return fail("VALIDATION_ERROR", "unsupported action type");
+
+  // The hash the human approved is bound to the params the Gateway will
+  // execute — recomputed here from the request, never taken from the caller.
+  const parsed = validateAction(req.actionType, req.target, req.params);
+  if (!parsed.ok) return fail("VALIDATION_ERROR", parsed.errors.join("; "));
+  const params = parsed.action.params;
+  const computedHash = await hashRecord({ type: req.actionType, target: req.target, ...params });
+  if (c.actionHash !== computedHash) {
+    return fail("AUTHORIZATION_INVALID", "parameter mismatch: params do not match approved hash");
+  }
 
   const def = ACTION_REGISTRY[req.actionType];
 
@@ -138,6 +167,12 @@ export async function executeAuthorizedAction(
   }
 
   if (currentFingerprint !== c.passportFingerprint) {
+    // Stale authority dies here, permanently: ACTIVE -> INVALIDATED before the
+    // caller hears about the drift, so the same authorization can never be
+    // retried against a world that happens to drift back. If the store is
+    // unreachable the row may stay ACTIVE until it recovers, but this attempt
+    // is still refused — the refusal must never depend on the store being up.
+    await deps.store.invalidate(c.id).catch(() => undefined);
     return fail("CONTEXT_DRIFT", "approved context no longer matches current context", {
       approvedFingerprint: c.passportFingerprint,
       currentFingerprint,
@@ -159,10 +194,10 @@ export async function executeAuthorizedAction(
       `Governed by DataHubX. approval=${c.approvalId} principal=${c.principal} ` +
       `policy=${c.policyId} v${c.policyVersion} passport=${c.passportFingerprint.slice(0, 16)}`;
     ({ acknowledged } = await executeMutation(
-      deps.client,
+      deps.datahub,
       req.actionType,
       req.target,
-      req.params,
+      params,
       provenance,
     ));
   } catch (e) {
@@ -175,17 +210,20 @@ export async function executeAuthorizedAction(
   let verification: VerificationOutcome;
   try {
     observedAfter = await deps.client.readVerificationState(req.target);
-    verification = def.postcondition.holds(req.params, observedAfter)
-      ? "VERIFIED_SUCCESS"
-      : providerError !== null
-        ? "EXECUTION_UNKNOWN"
-        : "POSTCONDITION_FAILED";
+    const holds = def.postcondition.holds(params, observedAfter);
+    if (providerError !== null || !acknowledged) {
+      // The provider did not confirm the write. A world that does not show the
+      // postcondition either is a definitive failure; a world that already
+      // matches is not something this action can claim credit for.
+      if (!holds) {
+        return fail("PROVIDER_ERROR", providerError ?? "provider did not acknowledge the mutation");
+      }
+      verification = "EXECUTION_UNKNOWN";
+    } else {
+      verification = holds ? "VERIFIED_SUCCESS" : "POSTCONDITION_FAILED";
+    }
   } catch {
     verification = "VERIFICATION_PENDING";
-  }
-
-  if (verification === "POSTCONDITION_FAILED" && !acknowledged && providerError !== null) {
-    return fail("PROVIDER_ERROR", providerError);
   }
 
   return {
@@ -196,11 +234,12 @@ export async function executeAuthorizedAction(
       authorizationId: c.id,
       target: req.target,
       actionType: req.actionType,
-      params: req.params,
+      params,
       fingerprintAtExecution: currentFingerprint,
-      postcondition: def.postcondition.describe(req.params),
+      postcondition: def.postcondition.describe(params),
       verification,
       observedAfter,
+      providerError,
       executedAt: deps.now(),
     },
   };

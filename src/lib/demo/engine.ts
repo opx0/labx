@@ -2,8 +2,7 @@
 // the UI only renders what the policy engine and Gateway actually return.
 
 import { randomUUID } from "node:crypto";
-import { DataHubClient } from "@/lib/datahub/client";
-import { M_UPDATE_LINEAGE } from "@/lib/datahub/mutations";
+import { DataHubClient, type DataHubConfig } from "@/lib/datahub/client";
 import { PrismaAuthorizationStore } from "@/lib/db/authorization-store";
 import { recordAuthorizedChain, recordExecution } from "@/lib/db/repository";
 import { ACTION_REGISTRY, type ActionType, validateAction } from "@/lib/domain/actions";
@@ -21,6 +20,7 @@ import {
   type PolicyDecision,
 } from "@/lib/domain/policy";
 import { executeAuthorizedAction, type GatewayResult } from "@/lib/gateway/gateway";
+import { addLineageEdge, removeLineageEdge, setDeprecation } from "./out-of-band";
 import { CANDIDATES, DRIFT_URN, TARGETS } from "./targets";
 
 export { CANDIDATES, DRIFT_URN, TARGETS } from "./targets";
@@ -41,6 +41,7 @@ export type ScenarioState = {
     | "AUTHORIZED"
     | "DRIFT_DETECTED"
     | "COMPLETED"
+    | "EXECUTED_UNVERIFIED"
     | "BLOCKED";
   targetKey: keyof typeof TARGETS;
   actionType: ActionType;
@@ -85,13 +86,17 @@ class Engine {
   private deps_fields: string[] = [];
   private chain: { actionId: string; authorizationId: string } | null = null;
 
-  private client() {
+  private config(): DataHubConfig {
     const gmsUrl = process.env.DATAHUB_GMS_URL;
     const token = process.env.DATAHUB_TOKEN;
     if (!gmsUrl || !token) {
       throw new Error("DATAHUB_GMS_URL and DATAHUB_TOKEN must be set (see .env.local)");
     }
-    return new DataHubClient({ gmsUrl, token });
+    return { gmsUrl, token };
+  }
+
+  private client() {
+    return new DataHubClient(this.config());
   }
 
   private log(type: string, detail: string, severity: AuditEvent["severity"] = "info") {
@@ -99,8 +104,10 @@ class Engine {
   }
 
   private gatewayDeps() {
+    const config = this.config();
     return {
-      client: this.client(),
+      client: new DataHubClient(config),
+      datahub: config,
       store: this.store,
       publicKeyPem: this.keys.publicKeyPem,
       now: () => Date.now(),
@@ -109,19 +116,10 @@ class Engine {
   }
 
   async reset() {
-    const client = this.client();
+    const config = this.config();
     // Remove the drift edge and reinstate the dataset so a run is repeatable.
-    await client
-      .graphql(
-        `mutation($d:String!,$u:String!){ updateLineage(input:{edgesToAdd:[],edgesToRemove:[{downstreamUrn:$d,upstreamUrn:$u}]}) }`,
-        { d: DRIFT_URN, u: TARGETS.customer_prod },
-      )
-      .catch(() => undefined);
-    await client
-      .graphql(`mutation($u:String!){ updateDeprecation(input:{urn:$u, deprecated:false}) }`, {
-        u: TARGETS.customer_prod,
-      })
-      .catch(() => undefined);
+    await removeLineageEdge(config, DRIFT_URN, TARGETS.customer_prod).catch(() => undefined);
+    await setDeprecation(config, TARGETS.customer_prod, false).catch(() => undefined);
     this.state = freshState();
     this.auth = null;
     this.chain = null;
@@ -140,6 +138,9 @@ class Engine {
       this.log("VALIDATION_ERROR", parsed.errors.join("; "), "bad");
       return this.state;
     }
+    // Hash and execute the validated params, so the approve-time hash always
+    // matches what the Gateway recomputes.
+    params = parsed.action.params;
 
     this.state = { ...freshState(), events: this.state.events, targetKey, actionType, params };
     this.log("ACTION_PROPOSED", `${actionType} on ${targetKey}`, "info");
@@ -233,10 +234,7 @@ class Engine {
 
   async injectDrift() {
     const client = this.client();
-    await client.graphql(M_UPDATE_LINEAGE, {
-      downstreamUrn: DRIFT_URN,
-      upstreamUrn: TARGETS.customer_prod,
-    });
+    await addLineageEdge(this.config(), DRIFT_URN, TARGETS.customer_prod);
     this.log(
       "ENVIRONMENT_CHANGED",
       "fraud_alerts became a critical downstream of customer_prod",
@@ -277,22 +275,37 @@ class Engine {
       actionType: s.actionType,
       target: TARGETS[s.targetKey],
       params: s.params,
-      actionHash: this.actionHash,
       contextDependencies: this.deps_fields,
       approvedContext: s.approvedContext ?? undefined,
     });
     s.lastResult = result;
 
     if (result.ok) {
-      s.phase = "COMPLETED";
-      this.log("EXECUTION_SUCCEEDED", "Mutation applied to DataHub", "good");
-      this.log("VERIFICATION", `${result.verification} — ${result.receipt.postcondition}`, "good");
+      // Success is claimed only when the postcondition verified against
+      // DataHub itself. Anything else is an executed-but-unproven state.
+      if (result.verification === "VERIFIED_SUCCESS") {
+        s.phase = "COMPLETED";
+        this.log("EXECUTION_SUCCEEDED", "Mutation applied to DataHub", "good");
+        this.log(
+          "VERIFICATION",
+          `${result.verification} — ${result.receipt.postcondition}`,
+          "good",
+        );
+      } else {
+        s.phase = "EXECUTED_UNVERIFIED";
+        this.log(
+          "EXECUTION_UNVERIFIED",
+          `${result.verification} — ${result.receipt.postcondition}`,
+          result.verification === "POSTCONDITION_FAILED" ? "bad" : "warn",
+        );
+      }
       if (this.chain) {
         await recordExecution({
           authorizationId: this.chain.authorizationId,
           actionId: this.chain.actionId,
           idempotencyKey: `${this.chain.authorizationId}:${this.actionHash}`,
           outcome: result.verification,
+          errorCode: result.receipt.providerError ?? undefined,
           receipt: {
             target: result.receipt.target,
             actionType: result.receipt.actionType,
@@ -302,20 +315,41 @@ class Engine {
             verification: result.receipt.verification,
             observedAfter: result.receipt.observedAfter,
           },
-        }).catch(() => undefined);
+        }).catch(() =>
+          this.log(
+            "RECEIPT_PERSIST_FAILED",
+            "Execution happened but its receipt was not persisted",
+            "warn",
+          ),
+        );
       }
-    } else if (result.code === "CONTEXT_DRIFT") {
-      s.phase = "DRIFT_DETECTED";
-      s.currentFingerprint = result.drift?.currentFingerprint ?? s.currentFingerprint;
-      s.currentContext = result.drift?.currentContext ?? s.currentContext;
-      this.log(
-        "AUTHORIZATION_INVALIDATED",
-        "Approved context no longer matches current context",
-        "bad",
-      );
-      this.log("MUTATION_NOT_EXECUTED", "DataHub was not modified", "good");
     } else {
-      this.log(result.code, result.message, "bad");
+      if (result.code === "CONTEXT_DRIFT") {
+        s.phase = "DRIFT_DETECTED";
+        s.currentFingerprint = result.drift?.currentFingerprint ?? s.currentFingerprint;
+        s.currentContext = result.drift?.currentContext ?? s.currentContext;
+        this.log(
+          "AUTHORIZATION_INVALIDATED",
+          "Authorization permanently INVALIDATED in Postgres — stale authority cannot be reused",
+          "bad",
+        );
+        this.log("MUTATION_NOT_EXECUTED", "DataHub was not modified", "good");
+      } else {
+        this.log(result.code, result.message, "bad");
+      }
+      // Refusals are part of the durable audit trail, not just the in-memory
+      // timeline — a drift refusal is the product's headline event.
+      if (this.chain) {
+        await recordExecution({
+          authorizationId: this.chain.authorizationId,
+          actionId: this.chain.actionId,
+          idempotencyKey: `${this.chain.authorizationId}:refused:${randomUUID()}`,
+          outcome: "REFUSED",
+          errorCode: result.code,
+        }).catch(() =>
+          this.log("RECEIPT_PERSIST_FAILED", "Refusal was not persisted to Postgres", "warn"),
+        );
+      }
     }
     await this.refreshCurrent();
     return s;

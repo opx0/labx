@@ -15,10 +15,10 @@
 
 import { randomUUID } from "node:crypto";
 import { DataHubClient } from "../src/lib/datahub/client";
-import { M_UPDATE_LINEAGE } from "../src/lib/datahub/mutations";
 import { PrismaAuthorizationStore } from "../src/lib/db/authorization-store";
 import { prisma } from "../src/lib/db/client";
 import { recordAuthorizedChain, recordExecution } from "../src/lib/db/repository";
+import { addLineageEdge, removeLineageEdge, setDeprecation } from "../src/lib/demo/out-of-band";
 import { ACTION_REGISTRY, validateAction } from "../src/lib/domain/actions";
 import { generateSigningKeypair, issueAuthorization } from "../src/lib/domain/authorization";
 import { fingerprint, hashRecord } from "../src/lib/domain/canonical";
@@ -57,11 +57,13 @@ const expect = (cond: boolean, msg: string) => {
 async function main() {
   if (!TOKEN) throw new Error("DATAHUB_TOKEN is required");
 
-  const client = new DataHubClient({ gmsUrl: GMS, token: TOKEN });
+  const config = { gmsUrl: GMS, token: TOKEN };
+  const client = new DataHubClient(config);
   const store = new PrismaAuthorizationStore();
   const { privateKeyPem, publicKeyPem } = generateSigningKeypair();
   const deps = {
     client,
+    datahub: config,
     store,
     publicKeyPem,
     now: () => Date.now(),
@@ -83,11 +85,9 @@ async function main() {
     ACTION_REGISTRY[action.type].requiresContext,
   );
 
-  // -- reset drift edge so the run is repeatable -----------------------------
-  await client.graphql(
-    `mutation($d:String!,$u:String!){ updateLineage(input:{edgesToAdd:[],edgesToRemove:[{downstreamUrn:$d,upstreamUrn:$u}]}) }`,
-    { d: DRIFT, u: TARGET },
-  );
+  // -- reset drift edge so the run is repeatable (out-of-band, like the
+  //    external actor it simulates — the governed client cannot write) -------
+  await removeLineageEdge(config, DRIFT, TARGET);
 
   c.hd("1. AGENT PROPOSES · PASSPORT P1 · POLICY");
   const ctx1 = await client.readContext(TARGET, deps_fields, CANDIDATES);
@@ -144,10 +144,14 @@ async function main() {
   c.kv("approved against", `${fp1.slice(0, 16)}…`);
   c.kv("authorization", `AUTH-001 (${auth1.claims.id.slice(0, 8)}…)`);
   c.kv("persisted", `action ${chain1.actionId.slice(0, 8)}… → passport → approval → authorization`);
+  expect(
+    chain1.approvalId === auth1.claims.approvalId,
+    "signed approvalId resolves to the persisted approval row",
+  );
 
   c.hd("3. REALITY CHANGES · a third critical dependency appears");
   const before = await client.readVerificationState(TARGET);
-  await client.graphql(M_UPDATE_LINEAGE, { downstreamUrn: DRIFT, upstreamUrn: TARGET });
+  await addLineageEdge(config, DRIFT, TARGET);
   let count = 0;
   for (let i = 0; i < 100; i++) {
     ({ count } = await client.countCriticalDownstreams(TARGET, CANDIDATES));
@@ -164,7 +168,6 @@ async function main() {
     actionType: action.type,
     target: action.target,
     params: action.params,
-    actionHash,
     contextDependencies: deps_fields,
     approvedContext: ctx1,
   });
@@ -175,6 +178,24 @@ async function main() {
   }
   expect(!r1.ok && r1.code === "CONTEXT_DRIFT", "gateway returns CONTEXT_DRIFT");
   expect(!r1.executed, "MUTATION NOT EXECUTED");
+
+  const invalidated = await prisma.authorization.findUnique({ where: { id: auth1.claims.id } });
+  expect(
+    invalidated?.state === "INVALIDATED",
+    "drifted authorization is permanently INVALIDATED in Postgres",
+  );
+  const retry = await executeAuthorizedAction(deps, {
+    authorization: auth1,
+    principal: PRINCIPAL,
+    actionType: action.type,
+    target: action.target,
+    params: action.params,
+    contextDependencies: deps_fields,
+  });
+  expect(
+    !retry.ok && retry.code === "AUTHORIZATION_INVALID",
+    "retrying the drifted authorization is refused — stale authority stays dead",
+  );
 
   const after = await client.readVerificationState(TARGET);
   expect(
@@ -234,7 +255,6 @@ async function main() {
     actionType: action.type,
     target: action.target,
     params: action.params,
-    actionHash,
     contextDependencies: deps_fields,
     approvedContext: ctx2,
   });
@@ -267,8 +287,10 @@ async function main() {
 
   const persisted = await prisma.authorization.findUnique({ where: { id: auth2.claims.id } });
   expect(persisted?.state === "CONSUMED", "authorization is CONSUMED in Postgres");
-  const stale = await prisma.authorization.findUnique({ where: { id: auth1.claims.id } });
-  expect(stale?.state === "ACTIVE", "the drifted authorization was never consumed");
+  expect(
+    chain2.approvalId === auth2.claims.approvalId,
+    "fresh approval row id matches the signed approvalId",
+  );
 
   c.hd("7. SECURITY PROPERTIES");
   const replay = await executeAuthorizedAction(deps, {
@@ -277,7 +299,6 @@ async function main() {
     actionType: action.type,
     target: action.target,
     params: action.params,
-    actionHash,
     contextDependencies: deps_fields,
   });
   expect(!replay.ok && replay.code === "AUTHORIZATION_REPLAY", "replay of AUTH-002 is denied");
@@ -292,7 +313,6 @@ async function main() {
     actionType: action.type,
     target: tampered.claims.target,
     params: action.params,
-    actionHash,
     contextDependencies: deps_fields,
   });
   expect(
@@ -300,11 +320,63 @@ async function main() {
     "tampered authorization is rejected",
   );
 
-  // restore for the next run
-  await client.graphql(
-    `mutation($u:String!){ updateDeprecation(input:{urn:$u, deprecated:false}) }`,
-    { u: TARGET },
+  // Parameter substitution: valid, unconsumed authority presented with params
+  // that differ from what the human approved. The Gateway recomputes the hash
+  // from the params it would execute — the swap is refused.
+  const ctx3 = await client.readContext(TARGET, deps_fields, CANDIDATES);
+  const fp3 = await fingerprint(ctx3, deps_fields);
+  const decision3 = evaluatePolicy(
+    DEFAULT_POLICY_SET,
+    action.type,
+    ctx3,
+    ACTION_REGISTRY[action.type].requiresContext,
   );
+  const auth3 = issueAuthorization(
+    {
+      id: randomUUID(),
+      principal: PRINCIPAL,
+      actionType: action.type,
+      target: action.target,
+      actionHash, // approved for { lifecycle: DEPRECATED }
+      passportFingerprint: fp3,
+      policyId: decision3.policyId,
+      policyVersion: decision3.policyVersion,
+      approvalId: randomUUID(),
+      ttlSeconds: 900,
+      now: Date.now(),
+    },
+    privateKeyPem,
+  );
+  await recordAuthorizedChain({
+    principal: PRINCIPAL,
+    approver: "urn:li:corpuser:human-1",
+    actionType: action.type,
+    target: action.target,
+    params: action.params,
+    actionHash,
+    context: ctx3,
+    declaredFields: deps_fields,
+    fingerprint: fp3,
+    decision: decision3,
+    authorization: auth3,
+  });
+  const swapped = await executeAuthorizedAction(deps, {
+    authorization: auth3,
+    principal: PRINCIPAL,
+    actionType: action.type,
+    target: action.target,
+    params: { lifecycle: "ACTIVE" }, // <- not what was approved
+    contextDependencies: deps_fields,
+  });
+  expect(
+    !swapped.ok && swapped.code === "AUTHORIZATION_INVALID",
+    "params differing from the approved hash are rejected",
+  );
+  const a3 = await prisma.authorization.findUnique({ where: { id: auth3.claims.id } });
+  expect(a3?.state === "ACTIVE", "a rejected substitution does not consume the authorization");
+
+  // restore for the next run (out-of-band external actor)
+  await setDeprecation(config, TARGET, false);
 
   c.hd(
     failures === 0

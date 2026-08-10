@@ -63,8 +63,11 @@ export async function recordAuthorizedChain(input: {
       },
     });
 
+    // The approval row carries the SAME id the signed authorization names, so
+    // claims.approvalId resolves to a persisted approval, not a phantom.
     const approval = await tx.approval.create({
       data: {
+        id: c.approvalId,
         actionId: action.id,
         policyDecisionId: policyDecision.id,
         actionHash: input.actionHash,

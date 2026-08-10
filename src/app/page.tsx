@@ -70,7 +70,8 @@ function ContextTable({
 export default async function Page() {
   const s = engine.state;
   const drifted = s.phase === "DRIFT_DETECTED";
-  const hasAuth = s.authorizationLabel !== null && s.phase !== "COMPLETED";
+  const hasAuth =
+    s.authorizationLabel !== null && s.phase !== "COMPLETED" && s.phase !== "EXECUTED_UNVERIFIED";
 
   return (
     <div className="wrap">
@@ -79,7 +80,11 @@ export default async function Page() {
         <p>
           The agent proposes. The policy decides. The human authorizes. The Gateway enforces — by
           re-reading DataHub itself immediately before the mutation and refusing if the world no
-          longer matches what was approved.
+          longer matches what was approved.{" "}
+          <a href="https://catalog.opxz.dev/demo-login" target="_blank" rel="noreferrer">
+            Open the DataHub catalog
+          </a>{" "}
+          (signs you in as the read-only judge account) to verify every mutation yourself.
         </p>
       </header>
 
@@ -98,13 +103,31 @@ export default async function Page() {
         </div>
       )}
 
-      {s.phase === "COMPLETED" && s.lastResult?.ok && (
-        <div className="banner good">
-          <h3>Executed and verified</h3>
+      {s.phase === "COMPLETED" &&
+        s.lastResult?.ok &&
+        s.lastResult.verification === "VERIFIED_SUCCESS" && (
+          <div className="banner good">
+            <h3>Executed and verified</h3>
+            <p>
+              Fresh authority, granted against the world as it actually is. The Gateway mutated
+              DataHub and then read the state back to confirm it:{" "}
+              {s.lastResult.receipt.postcondition} → {s.lastResult.verification}.
+            </p>
+          </div>
+        )}
+
+      {s.phase === "EXECUTED_UNVERIFIED" && s.lastResult?.ok && (
+        <div
+          className={`banner ${s.lastResult.verification === "POSTCONDITION_FAILED" ? "bad" : "warn"}`}
+        >
+          <h3>Attempted — not verified</h3>
           <p>
-            Fresh authority, granted against the world as it actually is. The Gateway mutated
-            DataHub and then read the state back to confirm it: {s.lastResult.receipt.postcondition}{" "}
-            → {s.lastResult.verification}.
+            The Gateway attempted the mutation but could not verify it against DataHub:{" "}
+            {s.lastResult.receipt.postcondition} → {s.lastResult.verification}
+            {s.lastResult.receipt.providerError
+              ? ` (provider: ${s.lastResult.receipt.providerError})`
+              : ""}
+            . This is not success — the recorded outcome is {s.lastResult.verification}.
           </p>
         </div>
       )}
