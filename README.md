@@ -9,9 +9,20 @@ refuses if reality has moved.
 
 > The agent proposes. The policy decides. The human authorizes. The Gateway enforces.
 
-**Live:** [app.opxz.dev](https://app.opxz.dev) — the governance console, driving a real DataHub.
-[catalog.opxz.dev](https://catalog.opxz.dev) — that DataHub's own UI (`datahub` / `datahub`), so
-you can confirm the mutations are real and see the provenance written back.
+## Try it
+
+| | |
+|---|---|
+| Governance console | **https://app.opxz.dev** — no login |
+| The DataHub it drives | **https://catalog.opxz.dev** — sign in `datahub` / `datahub` |
+
+Drive the console, then open the catalog and check `customer_prod` yourself: the deprecation is
+real, and its note carries the approval id, principal, policy version and passport fingerprint
+that authorised it.
+
+DataHub sign-in is deliberately left on. It ships with `METADATA_SERVICE_AUTH_ENABLED=false`,
+meaning tokens are ignored and anonymous requests succeed; we turned it on. Leaving a mutable
+catalog open to the internet would contradict the entire point of this project.
 
 ---
 
