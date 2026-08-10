@@ -16,8 +16,9 @@
     "db:deploy": "prisma migrate deploy",
     "db:generate": "prisma generate",
     "db:studio": "prisma studio",
-    "db:push": "echo 'db:push is disabled — use db:migrate so schema history stays reviewable' && exit 1",
-    "test:integration": "vitest run --config vitest.integration.config.ts"
+    "db:push": "echo 'db:push is disabled \u2014 use db:migrate so schema history stays reviewable' && exit 1",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "health": "bun run scripts/healthcheck.ts"
   },
   "dependencies": {
     "@ai-sdk/google": "^4.0.39",

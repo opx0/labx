@@ -90,6 +90,8 @@ export type GatewayDeps = {
   readonly datahub: DataHubConfig;
   readonly store: AuthorizationStore;
   readonly publicKeyPem: string;
+  /** The policy set currently in force. Authority issued under another dies. */
+  readonly policy: { readonly policyId: string; readonly policyVersion: number };
   readonly now: () => number;
   readonly candidatesFor: (target: string) => readonly string[];
 };
@@ -133,6 +135,17 @@ export async function executeAuthorizedAction(
   if (c.actionType !== req.actionType) return fail("AUTHORIZATION_INVALID", "action mismatch");
   if (c.target !== req.target) return fail("AUTHORIZATION_INVALID", "target mismatch");
   if (!isActionType(req.actionType)) return fail("VALIDATION_ERROR", "unsupported action type");
+
+  // Authority is bound to the policy that justified it. A policy change after
+  // issuance kills the authorization the same way context drift does.
+  if (c.policyId !== deps.policy.policyId || c.policyVersion !== deps.policy.policyVersion) {
+    await deps.store.invalidate(c.id).catch(() => undefined);
+    return fail(
+      "AUTHORIZATION_INVALID",
+      `policy changed since approval (approved under ${c.policyId} v${c.policyVersion}, ` +
+        `current is ${deps.policy.policyId} v${deps.policy.policyVersion})`,
+    );
+  }
 
   // The hash the human approved is bound to the params the Gateway will
   // execute — recomputed here from the request, never taken from the caller.

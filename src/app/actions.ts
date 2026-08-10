@@ -37,6 +37,14 @@ export async function approveAction() {
   await run(() => engine.approve());
 }
 
+export async function rejectAction() {
+  await run(() => engine.reject());
+}
+
+export async function revokeAction() {
+  await run(() => engine.revoke());
+}
+
 export async function injectDriftAction() {
   await run(() => engine.injectDrift());
 }

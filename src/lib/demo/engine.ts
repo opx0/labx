@@ -4,13 +4,17 @@
 import { randomUUID } from "node:crypto";
 import { DataHubClient, type DataHubConfig } from "@/lib/datahub/client";
 import { PrismaAuthorizationStore } from "@/lib/db/authorization-store";
-import { recordAuthorizedChain, recordExecution } from "@/lib/db/repository";
-import { ACTION_REGISTRY, type ActionType, validateAction } from "@/lib/domain/actions";
 import {
-  generateSigningKeypair,
-  issueAuthorization,
-  type SignedAuthorization,
-} from "@/lib/domain/authorization";
+  type AuditRefs,
+  loadAuditTimeline,
+  recordAuditEvent,
+  recordAuthorizedChain,
+  recordExecution,
+  recordRejectedChain,
+} from "@/lib/db/repository";
+import { loadOrCreateSigningKeypair } from "@/lib/db/signing-key";
+import { ACTION_REGISTRY, type ActionType, validateAction } from "@/lib/domain/actions";
+import { issueAuthorization, type SignedAuthorization } from "@/lib/domain/authorization";
 import { fingerprint, hashRecord } from "@/lib/domain/canonical";
 import type { Context } from "@/lib/domain/context";
 import {
@@ -42,6 +46,8 @@ export type ScenarioState = {
     | "DRIFT_DETECTED"
     | "COMPLETED"
     | "EXECUTED_UNVERIFIED"
+    | "REJECTED"
+    | "REVOKED"
     | "BLOCKED";
   targetKey: keyof typeof TARGETS;
   actionType: ActionType;
@@ -77,14 +83,40 @@ function freshState(): ScenarioState {
   };
 }
 
+const APPROVER = process.env.APPROVER_URN ?? "urn:li:corpuser:human-1";
+const PRINCIPAL = "urn:li:corpuser:agent-1";
+
 class Engine {
   state = freshState();
   private store = new PrismaAuthorizationStore();
-  private keys = generateSigningKeypair();
+  private keys = loadOrCreateSigningKeypair();
   private auth: SignedAuthorization | null = null;
   private actionHash = "";
   private deps_fields: string[] = [];
-  private chain: { actionId: string; authorizationId: string } | null = null;
+  private chain: { actionId: string; authorizationId: string; approvalId: string } | null = null;
+  private hydrated = false;
+
+  /** Rebuild the visible timeline from the durable audit trail on first render. */
+  async hydrate() {
+    if (this.hydrated) return;
+    this.hydrated = true;
+    try {
+      const rows = await loadAuditTimeline();
+      if (this.state.events.length === 0) {
+        this.state.events = rows.map((r) => ({
+          id: r.id,
+          at: r.at.getTime(),
+          type: r.type,
+          detail: r.detail,
+          severity: (["info", "good", "warn", "bad"].includes(r.severity)
+            ? r.severity
+            : "info") as AuditEvent["severity"],
+        }));
+      }
+    } catch {
+      // Database down: the in-memory timeline still works for this process.
+    }
+  }
 
   private config(): DataHubConfig {
     const gmsUrl = process.env.DATAHUB_GMS_URL;
@@ -99,8 +131,15 @@ class Engine {
     return new DataHubClient(this.config());
   }
 
-  private log(type: string, detail: string, severity: AuditEvent["severity"] = "info") {
+  private log(
+    type: string,
+    detail: string,
+    severity: AuditEvent["severity"] = "info",
+    refs?: AuditRefs,
+  ) {
     this.state.events.push({ id: randomUUID(), at: Date.now(), type, detail, severity });
+    // The durable trail must not depend on the request completing.
+    recordAuditEvent({ type, severity, detail, refs }).catch(() => undefined);
   }
 
   private gatewayDeps() {
@@ -110,6 +149,7 @@ class Engine {
       datahub: config,
       store: this.store,
       publicKeyPem: this.keys.publicKeyPem,
+      policy: { policyId: DEFAULT_POLICY_SET.id, policyVersion: DEFAULT_POLICY_SET.version },
       now: () => Date.now(),
       candidatesFor: () => CANDIDATES,
     };
@@ -193,7 +233,7 @@ class Engine {
     const auth = issueAuthorization(
       {
         id: randomUUID(),
-        principal: "urn:li:corpuser:agent-1",
+        principal: PRINCIPAL,
         actionType: s.actionType,
         target: TARGETS[s.targetKey],
         actionHash: this.actionHash,
@@ -208,8 +248,8 @@ class Engine {
     );
     this.auth = auth;
     this.chain = await recordAuthorizedChain({
-      principal: "urn:li:corpuser:agent-1",
-      approver: "urn:li:corpuser:human-1",
+      principal: PRINCIPAL,
+      approver: APPROVER,
       actionType: s.actionType,
       target: TARGETS[s.targetKey],
       params: s.params,
@@ -223,12 +263,74 @@ class Engine {
     s.authorizationLabel = label;
     s.authorizationExpiresAt = auth.claims.expiresAt;
     s.phase = "AUTHORIZED";
-    this.log("APPROVAL_GRANTED", `Approved against ${s.approvedFingerprint.slice(0, 12)}…`, "good");
+    this.log(
+      "APPROVAL_GRANTED",
+      `${APPROVER} approved against ${s.approvedFingerprint.slice(0, 12)}…`,
+      "good",
+      { actionId: this.chain.actionId, approvalId: this.chain.approvalId },
+    );
     this.log(
       "AUTHORIZATION_ISSUED",
       `${label}, expires in 15 min, bound to that fingerprint`,
       "good",
+      {
+        actionId: this.chain.actionId,
+        authorizationId: this.chain.authorizationId,
+      },
     );
+    return s;
+  }
+
+  async reject() {
+    const s = this.state;
+    if (s.phase !== "AWAITING_APPROVAL" || !s.decision || !s.approvedFingerprint) return s;
+
+    const rejected = await recordRejectedChain({
+      principal: PRINCIPAL,
+      approver: APPROVER,
+      approvalId: randomUUID(),
+      actionType: s.actionType,
+      target: TARGETS[s.targetKey],
+      params: s.params,
+      actionHash: this.actionHash,
+      context: s.approvedContext ?? {},
+      declaredFields: this.deps_fields,
+      fingerprint: s.approvedFingerprint,
+      decision: s.decision,
+    }).catch(() => null);
+
+    s.phase = "REJECTED";
+    this.auth = null;
+    this.chain = null;
+    this.log(
+      "APPROVAL_REJECTED",
+      `${APPROVER} rejected the proposal — no authorization exists`,
+      "warn",
+      rejected ? { actionId: rejected.actionId, approvalId: rejected.approvalId } : undefined,
+    );
+    return s;
+  }
+
+  async revoke() {
+    const s = this.state;
+    if (!this.auth) return s;
+    const id = this.auth.claims.id;
+    const revoked = await this.store.revoke(id);
+    if (revoked) {
+      s.phase = "REVOKED";
+      s.lastResult = null;
+      this.log(
+        "AUTHORIZATION_REVOKED",
+        `${s.authorizationLabel ?? id.slice(0, 8)} revoked by ${APPROVER} — ACTIVE → REVOKED, unusable forever`,
+        "warn",
+        { authorizationId: id },
+      );
+      this.auth = null;
+    } else {
+      this.log("REVOKE_FAILED", `authorization is no longer ACTIVE`, "warn", {
+        authorizationId: id,
+      });
+    }
     return s;
   }
 
@@ -269,9 +371,10 @@ class Engine {
   async execute() {
     const s = this.state;
     if (!this.auth) return s;
+    const authorizationId = this.auth.claims.id;
     const result = await executeAuthorizedAction(this.gatewayDeps(), {
       authorization: this.auth,
-      principal: "urn:li:corpuser:agent-1",
+      principal: PRINCIPAL,
       actionType: s.actionType,
       target: TARGETS[s.targetKey],
       params: s.params,
@@ -283,13 +386,15 @@ class Engine {
     if (result.ok) {
       // Success is claimed only when the postcondition verified against
       // DataHub itself. Anything else is an executed-but-unproven state.
+      const refs = { authorizationId, actionId: this.chain?.actionId };
       if (result.verification === "VERIFIED_SUCCESS") {
         s.phase = "COMPLETED";
-        this.log("EXECUTION_SUCCEEDED", "Mutation applied to DataHub", "good");
+        this.log("EXECUTION_SUCCEEDED", "Mutation applied to DataHub", "good", refs);
         this.log(
-          "VERIFICATION",
+          "VERIFICATION_SUCCEEDED",
           `${result.verification} — ${result.receipt.postcondition}`,
           "good",
+          refs,
         );
       } else {
         s.phase = "EXECUTED_UNVERIFIED";
@@ -297,6 +402,7 @@ class Engine {
           "EXECUTION_UNVERIFIED",
           `${result.verification} — ${result.receipt.postcondition}`,
           result.verification === "POSTCONDITION_FAILED" ? "bad" : "warn",
+          refs,
         );
       }
       if (this.chain) {
@@ -324,6 +430,7 @@ class Engine {
         );
       }
     } else {
+      const refs = { authorizationId, actionId: this.chain?.actionId };
       if (result.code === "CONTEXT_DRIFT") {
         s.phase = "DRIFT_DETECTED";
         s.currentFingerprint = result.drift?.currentFingerprint ?? s.currentFingerprint;
@@ -332,10 +439,11 @@ class Engine {
           "AUTHORIZATION_INVALIDATED",
           "Authorization permanently INVALIDATED in Postgres — stale authority cannot be reused",
           "bad",
+          refs,
         );
-        this.log("MUTATION_NOT_EXECUTED", "DataHub was not modified", "good");
+        this.log("MUTATION_NOT_EXECUTED", "DataHub was not modified", "good", refs);
       } else {
-        this.log(result.code, result.message, "bad");
+        this.log(result.code, result.message, "bad", refs);
       }
       // Refusals are part of the durable audit trail, not just the in-memory
       // timeline — a drift refusal is the product's headline event.

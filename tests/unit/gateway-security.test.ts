@@ -63,12 +63,14 @@ class InMemoryStore implements AuthorizationStore {
 }
 
 class FakeReader implements ContextReader {
+  contextError: Error | null = null;
   constructor(
     public context: Context,
     public afterState: Record<string, unknown> = { lifecycle: "DEPRECATED", tags: [] },
     public verificationThrows = false,
   ) {}
   async readContext() {
+    if (this.contextError) throw this.contextError;
     return this.context;
   }
   async readVerificationState() {
@@ -106,12 +108,17 @@ async function issue(
   return auth;
 }
 
-function depsFor(reader: ContextReader, store: AuthorizationStore): GatewayDeps {
+function depsFor(
+  reader: ContextReader,
+  store: AuthorizationStore,
+  policy = { policyId: "datahubx-default", policyVersion: 1 },
+): GatewayDeps {
   return {
     client: reader,
     datahub: { gmsUrl: "http://fake", token: "fake" },
     store,
     publicKeyPem: keys.publicKeyPem,
+    policy,
     now: () => Date.now(),
     candidatesFor: () => [],
   };
@@ -372,6 +379,73 @@ describe("identity binding", () => {
     });
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.code).toBe("AUTHORIZATION_INVALID");
+    expect(mutate).not.toHaveBeenCalled();
+  });
+
+  it("a different target than approved is refused", async () => {
+    const store = new InMemoryStore();
+    const auth = await issue(store, world(2));
+    const r = await executeAuthorizedAction(depsFor(new FakeReader(world(2)), store), {
+      ...request(auth),
+      target: "urn:li:dataset:(urn:li:dataPlatform:demo,regulated_core,PROD)",
+    });
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.code).toBe("AUTHORIZATION_INVALID");
+      expect(r.message).toContain("target mismatch");
+    }
+    expect(mutate).not.toHaveBeenCalled();
+  });
+});
+
+describe("policy binding", () => {
+  it("authority issued under an old policy version is refused and permanently invalidated", async () => {
+    const store = new InMemoryStore();
+    const auth = await issue(store, world(2)); // issued under datahubx-default v1
+    const deps = depsFor(new FakeReader(world(2)), store, {
+      policyId: "datahubx-default",
+      policyVersion: 2, // policy set was bumped after issuance
+    });
+    const r = await executeAuthorizedAction(deps, request(auth));
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.code).toBe("AUTHORIZATION_INVALID");
+      expect(r.message).toContain("policy changed");
+    }
+    expect(await store.getState(auth.claims.id)).toBe("INVALIDATED");
+    expect(mutate).not.toHaveBeenCalled();
+  });
+});
+
+describe("lifecycle states", () => {
+  it("a revoked authorization is refused", async () => {
+    const store = new InMemoryStore();
+    const auth = await issue(store, world(2));
+    store.states.set(auth.claims.id, "REVOKED");
+    const r = await executeAuthorizedAction(
+      depsFor(new FakeReader(world(2)), store),
+      request(auth),
+    );
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.code).toBe("AUTHORIZATION_INVALID");
+      expect(r.message).toContain("REVOKED");
+    }
+    expect(mutate).not.toHaveBeenCalled();
+  });
+});
+
+describe("unreadable context", () => {
+  it("fails closed with CONTEXT_UNAVAILABLE — no consumption, no invalidation, no mutation", async () => {
+    const store = new InMemoryStore();
+    const auth = await issue(store, world(2));
+    const reader = new FakeReader(world(2));
+    reader.contextError = new Error("cannot fingerprint: unreadable context fields: tags");
+    const r = await executeAuthorizedAction(depsFor(reader, store), request(auth));
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.code).toBe("CONTEXT_UNAVAILABLE");
+    // No drift was OBSERVED, so authority survives the outage — but nothing executed.
+    expect(await store.getState(auth.claims.id)).toBe("ACTIVE");
     expect(mutate).not.toHaveBeenCalled();
   });
 });

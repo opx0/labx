@@ -176,7 +176,7 @@ bun run dev
 ```bash
 bun run typecheck          # TypeScript validation
 bun run check              # Biome formatting/lint checks
-bun run test:run           # 56 fast unit tests, no infrastructure needed
+bun run test:run           # 60 fast unit tests, no infrastructure needed
 bun run test:integration   # Postgres atomic-consumption tests; requires DATABASE_URL
 bun run build              # production Next.js build
 ```
@@ -250,6 +250,43 @@ The agent uses DataHub's MCP server for discovery with mutation tools disabled. 
   error is preserved on the receipt, and refused executions are persisted with their error code.
 - **Approval references resolve.** The `approvalId` inside the signed authorization is the
   primary key of the persisted approval row.
+- **Policy binding.** The signed authorization names the policy set and version it was approved
+  under. If the policy in force changes before execution, the Gateway refuses and permanently
+  invalidates the authorization — a rule change retroactively kills authority granted under the
+  old rules.
+- **Rejection and revocation are real states.** An approver can reject a proposal (persisted as
+  a `REJECTED` approval with its full evidence chain, and no authorization row exists at all) or
+  revoke an issued authorization (`ACTIVE → REVOKED`, atomic, refused by the Gateway forever).
+- **The audit trail is durable.** Every timeline event is persisted to Postgres with links to
+  the action, approval, authorization and execution it concerns; the console rebuilds its
+  timeline from the database after a restart. Refused executions are persisted with their error
+  codes, and the signing key survives restarts so outstanding authorizations are not orphaned.
+
+## Limitations and trust assumptions
+
+Stated explicitly — the guarantee is only as strong as these:
+
+- **Trusted computing base:** the Gateway runtime, the Ed25519 signing key, the Postgres
+  database, and DataHub's own identity boundary.
+- **Single-process demo:** the agent runtime and the Gateway run in one process, so both sides
+  see the same DataHub token. The *capability* is separated (the agent's client cannot express
+  a write; the MCP server is pinned and read-allowlisted — both test-enforced), but the
+  *credential* is not. A production deployment would run the Gateway separately with its own
+  scoped write token.
+- **Approver identity is configured, not authenticated:** approval/rejection/revocation act as
+  the `APPROVER_URN` principal (default `human-1`); there is no login in front of the button.
+- **Candidate-set dependency counting:** critical downstreams are counted over a declared
+  candidate set read by URN (deliberately, because lineage *search* measurably lags); an entity
+  nobody has declared is invisible until discovery catches up.
+- **Policy under-declaration narrows the guarantee silently** — a rule that reads a field it
+  does not declare would not be fingerprinted. A test asserts every rule declares every field
+  it reads.
+
+## Future work
+
+`CHANGE_OWNER` and further action types; authenticated approver identity; split deployment with
+scoped credentials per component; step-level authorization for multi-step agent workflows; a
+policy management UI; provider connectors beyond DataHub.
 
 ## Why DataHubX
 

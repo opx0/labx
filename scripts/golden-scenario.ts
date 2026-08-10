@@ -66,6 +66,7 @@ async function main() {
     datahub: config,
     store,
     publicKeyPem,
+    policy: { policyId: DEFAULT_POLICY_SET.id, policyVersion: DEFAULT_POLICY_SET.version },
     now: () => Date.now(),
     candidatesFor: () => CANDIDATES,
   };

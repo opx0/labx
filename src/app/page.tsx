@@ -1,5 +1,6 @@
 import { engine } from "@/lib/demo/engine";
 import type { Context, ContextValue } from "@/lib/domain/context";
+import { DEFAULT_POLICY_SET } from "@/lib/domain/policy";
 import {
   approveAction,
   askAgentAction,
@@ -7,8 +8,10 @@ import {
   injectDriftAction,
   proposeAction,
   refreshAction,
+  rejectAction,
   replanAction,
   resetAction,
+  revokeAction,
 } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -68,10 +71,11 @@ function ContextTable({
 }
 
 export default async function Page() {
+  await engine.hydrate();
   const s = engine.state;
   const drifted = s.phase === "DRIFT_DETECTED";
-  const hasAuth =
-    s.authorizationLabel !== null && s.phase !== "COMPLETED" && s.phase !== "EXECUTED_UNVERIFIED";
+  const hasAuth = s.phase === "AUTHORIZED";
+  const canReplan = drifted || s.phase === "REJECTED" || s.phase === "REVOKED";
 
   return (
     <div className="wrap">
@@ -142,6 +146,26 @@ export default async function Page() {
         </div>
       )}
 
+      {s.phase === "REJECTED" && (
+        <div className="banner warn">
+          <h3>Rejected by the approver — no authorization exists</h3>
+          <p>
+            The rejection is persisted with the full evidence chain (action, passport, policy
+            decision, REJECTED approval). The agent may replan; nothing it holds can execute.
+          </p>
+        </div>
+      )}
+
+      {s.phase === "REVOKED" && (
+        <div className="banner warn">
+          <h3>Authorization revoked</h3>
+          <p>
+            A human withdrew the authority before execution: ACTIVE → REVOKED, atomically in
+            Postgres. The Gateway will refuse it forever — revocation is not a soft delete.
+          </p>
+        </div>
+      )}
+
       {s.phase === "AWAITING_APPROVAL" && (
         <div className="banner warn">
           <h3>Human approval required</h3>
@@ -204,6 +228,12 @@ export default async function Page() {
                 <small>Binds authority to this fingerprint</small>
               </button>
             </form>
+            <form action={rejectAction}>
+              <button className="btn" type="submit" disabled={s.phase !== "AWAITING_APPROVAL"}>
+                Reject
+                <small>Persists a REJECTED approval — no authority</small>
+              </button>
+            </form>
             <form action={injectDriftAction}>
               <button className="btn warn" type="submit" disabled={!hasAuth}>
                 Change the world
@@ -216,8 +246,14 @@ export default async function Page() {
                 <small>Re-reads context, then decides</small>
               </button>
             </form>
+            <form action={revokeAction}>
+              <button className="btn" type="submit" disabled={!hasAuth}>
+                Revoke authorization
+                <small>Human withdraws authority before execution</small>
+              </button>
+            </form>
             <form action={replanAction}>
-              <button className="btn" type="submit" disabled={!drifted}>
+              <button className="btn" type="submit" disabled={!canReplan}>
                 Replan
                 <small>Fresh Passport against the new world</small>
               </button>
@@ -300,8 +336,41 @@ export default async function Page() {
             )}
           </div>
 
+          <div className="panel" style={{ marginTop: 14 }}>
+            <h2>
+              Policy in force — {DEFAULT_POLICY_SET.id} v{DEFAULT_POLICY_SET.version}
+            </h2>
+            <p className="note">
+              Deterministic rules; the LLM cannot override them. Each rule declares the context
+              fields it depends on — exactly those fields are fingerprinted into the Passport, and a
+              signed authorization dies if the policy set itself changes.
+            </p>
+            <table className="policy">
+              <tbody>
+                {DEFAULT_POLICY_SET.rules.map((r) => (
+                  <tr key={r.id}>
+                    <td className="k">{r.id}</td>
+                    <td>
+                      <span className={`pill ${r.decision}`}>{r.decision}</span>
+                    </td>
+                    <td className="v">
+                      {r.description}
+                      <div style={{ color: "var(--muted)", fontSize: 12 }}>
+                        depends on: {r.dependsOn.join(", ")} · risk {r.risk}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
           <div className="panel timeline" style={{ marginTop: 14 }}>
             <h2>Audit timeline</h2>
+            <p className="note">
+              Every event is persisted to Postgres with links to the action, approval, authorization
+              and execution it concerns — the trail survives restarts.
+            </p>
             {s.events.length === 0 ? (
               <div className="empty">No events yet — propose an action to begin.</div>
             ) : (
