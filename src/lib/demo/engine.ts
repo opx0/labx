@@ -100,6 +100,8 @@ class Engine {
   async hydrate() {
     if (this.hydrated) return;
     this.hydrated = true;
+    // Warm the agent's MCP subprocess so the first "Ask agent" click is fast.
+    import("@/lib/agent/agent").then((m) => m.warmAgent()).catch(() => undefined);
     try {
       const rows = await loadAuditTimeline();
       if (this.state.events.length === 0) {

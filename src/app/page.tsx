@@ -13,6 +13,7 @@ import {
   resetAction,
   revokeAction,
 } from "./actions";
+import { SubmitButton } from "./submit-button";
 
 export const dynamic = "force-dynamic";
 
@@ -187,10 +188,10 @@ export default async function Page() {
                 name="intent"
                 defaultValue="Retire customer_prod, it is being decommissioned."
               />
-              <button className="btn primary" type="submit">
+              <SubmitButton className="btn primary" pendingLabel="Agent reading DataHub, planning…">
                 Ask agent
                 <small>Reads DataHub, proposes one governed action</small>
-              </button>
+              </SubmitButton>
             </form>
             <p className="note">
               The agent has three tools: list, inspect, propose. It has no tool that mutates
@@ -213,60 +214,77 @@ export default async function Page() {
                 <option value="ADD_TAG">ADD_TAG → Deprecated</option>
                 <option value="UPDATE_DESCRIPTION">UPDATE_DESCRIPTION</option>
               </select>
-              <button className="btn primary" type="submit">
+              <SubmitButton
+                className="btn primary"
+                pendingLabel="Building Passport, evaluating policy…"
+              >
                 Propose action
                 <small>Builds a Passport and evaluates policy</small>
-              </button>
+              </SubmitButton>
             </form>
           </div>
 
           <div className="panel" style={{ marginTop: 14 }}>
             <h2>Govern</h2>
             <form action={approveAction}>
-              <button className="btn" type="submit" disabled={s.phase !== "AWAITING_APPROVAL"}>
+              <SubmitButton
+                disabled={s.phase !== "AWAITING_APPROVAL"}
+                pendingLabel="Issuing signed authorization…"
+              >
                 Approve
                 <small>Binds authority to this fingerprint</small>
-              </button>
+              </SubmitButton>
             </form>
             <form action={rejectAction}>
-              <button className="btn" type="submit" disabled={s.phase !== "AWAITING_APPROVAL"}>
+              <SubmitButton
+                disabled={s.phase !== "AWAITING_APPROVAL"}
+                pendingLabel="Persisting rejection…"
+              >
                 Reject
                 <small>Persists a REJECTED approval — no authority</small>
-              </button>
+              </SubmitButton>
             </form>
             <form action={injectDriftAction}>
-              <button className="btn warn" type="submit" disabled={!hasAuth}>
+              <SubmitButton
+                className="btn warn"
+                disabled={!hasAuth}
+                pendingLabel="Mutating DataHub lineage…"
+              >
                 Change the world
                 <small>Adds a 3rd critical dependency in DataHub</small>
-              </button>
+              </SubmitButton>
             </form>
             <form action={executeAction}>
-              <button className="btn primary" type="submit" disabled={!hasAuth}>
+              <SubmitButton
+                className="btn primary"
+                disabled={!hasAuth}
+                pendingLabel="Gateway re-reading context…"
+              >
                 Execute via Gateway
                 <small>Re-reads context, then decides</small>
-              </button>
+              </SubmitButton>
             </form>
             <form action={revokeAction}>
-              <button className="btn" type="submit" disabled={!hasAuth}>
+              <SubmitButton disabled={!hasAuth} pendingLabel="Revoking in Postgres…">
                 Revoke authorization
                 <small>Human withdraws authority before execution</small>
-              </button>
+              </SubmitButton>
             </form>
             <form action={replanAction}>
-              <button className="btn" type="submit" disabled={!canReplan}>
+              <SubmitButton disabled={!canReplan} pendingLabel="Fresh Passport against new world…">
                 Replan
                 <small>Fresh Passport against the new world</small>
-              </button>
+              </SubmitButton>
             </form>
             <form action={refreshAction}>
-              <button className="btn ghost" type="submit">
+              <SubmitButton className="btn ghost" pendingLabel="Re-reading context…">
                 Refresh current context
-              </button>
+              </SubmitButton>
             </form>
             <form action={resetAction}>
-              <button className="btn ghost" type="submit">
+              <SubmitButton className="btn ghost" pendingLabel="Resetting DataHub baseline…">
                 Reset demo
-              </button>
+              </SubmitButton>
             </form>
             <p className="note">
               Every button drives the real domain against a real DataHub instance. Nothing here is

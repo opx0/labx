@@ -358,3 +358,17 @@ input:not([type]) {
   border-radius: 7px;
   font-size: 13.5px;
 }
+
+.btn[aria-busy="true"] {
+  cursor: progress;
+  animation: busyPulse 1.1s ease-in-out infinite;
+}
+@keyframes busyPulse {
+  0%,
+  100% {
+    opacity: 0.6;
+  }
+  50% {
+    opacity: 1;
+  }
+}

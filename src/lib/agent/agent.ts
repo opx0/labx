@@ -29,11 +29,22 @@ const client = () =>
   });
 
 // One MCP process per server, not per request: uvx spawn costs seconds.
+// A failed spawn must not poison the cache — the next click retries.
 let mcp: ReturnType<typeof connectDataHubMcp> | null = null;
 const datahubMcp = () => {
-  mcp ??= connectDataHubMcp();
+  if (!mcp) {
+    mcp = connectDataHubMcp();
+    mcp.catch(() => {
+      mcp = null;
+    });
+  }
   return mcp;
 };
+
+/** Spawn the MCP server ahead of the first request, so the first judge click is fast. */
+export function warmAgent() {
+  datahubMcp().catch(() => undefined);
+}
 
 export function governanceTools(onPropose: (p: Proposal) => void) {
   return {
