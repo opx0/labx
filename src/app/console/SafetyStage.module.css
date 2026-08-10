@@ -1,0 +1,154 @@
+.hero {
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  box-shadow: var(--shadow);
+  padding: clamp(24px, 3vw, 36px);
+}
+.hero.blue {
+  border-color: #bfdbfe;
+  background: linear-gradient(135deg, var(--accent-soft), var(--panel) 62%);
+}
+.hero.good {
+  border-color: #a7f3d0;
+  background: linear-gradient(135deg, var(--good-soft), var(--panel) 62%);
+}
+.hero h2 {
+  margin: 8px 0 10px;
+  font-size: clamp(25px, 3vw, 34px);
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  line-height: 1.12;
+}
+.hero > p {
+  margin: 0;
+  max-width: 62ch;
+  color: var(--muted);
+  font-size: 16px;
+}
+
+.kicker {
+  display: inline-block;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.kickerGood {
+  color: var(--good);
+}
+
+/* mode A — result steps */
+.steps {
+  display: grid;
+  gap: 10px;
+  margin: 24px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.steps li {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 13px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.78);
+}
+.num {
+  flex: 0 0 auto;
+  padding-top: 2px;
+  color: var(--good);
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 800;
+}
+.numWarn {
+  color: var(--warn);
+}
+.numBad {
+  color: var(--bad);
+}
+.steps b,
+.steps span span {
+  display: block;
+}
+.steps b {
+  font-size: 14.5px;
+}
+.steps span span {
+  margin-top: 1px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 18px;
+  margin-top: 20px;
+}
+.actions form {
+  flex: 1 1 230px;
+}
+.actions .btn,
+.actions form :global(.btn) {
+  margin-top: 0;
+}
+.actions > a {
+  color: var(--accent);
+  font-size: 14.5px;
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.actions > a:hover {
+  text-decoration: underline;
+}
+
+/* mode B — launcher */
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 24px;
+  color: var(--accent);
+  font-size: 14px;
+  font-weight: 700;
+}
+.chips span {
+  padding: 6px 12px;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.8);
+}
+.chips b {
+  color: #93c5fd;
+}
+.launch {
+  margin-top: 22px;
+  max-width: 460px;
+}
+.proves {
+  margin-top: 26px;
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+}
+.proves h3 {
+  margin: 0 0 8px;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.proves ul {
+  margin: 0;
+  padding-left: 20px;
+  font-size: 15px;
+}
+.proves li {
+  margin: 7px 0;
+}

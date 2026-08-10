@@ -1,0 +1,126 @@
+.stepper {
+  padding: 18px 22px 14px;
+}
+
+.track {
+  display: flex;
+  align-items: center;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-x: auto;
+}
+
+.stage {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  white-space: nowrap;
+}
+
+.stage:first-child {
+  flex: 0 0 auto;
+}
+
+/* connector line before every stage except the first */
+.stage + .stage::before {
+  content: "";
+  flex: 1;
+  min-width: 20px;
+  height: 2px;
+  margin: 0 12px;
+  border-radius: 1px;
+  background: var(--line);
+}
+
+.node {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  flex: 0 0 26px;
+  border-radius: 50%;
+  font-size: 13px;
+  font-weight: 600;
+  background: var(--panel-2);
+  border: 1px solid var(--line-strong);
+  color: var(--muted);
+}
+
+.label {
+  margin-left: 8px;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+/* done: quietly passed */
+.done .node {
+  background: var(--accent-soft);
+  border-color: var(--accent-soft);
+  color: var(--accent);
+}
+.done::before {
+  background: var(--accent);
+  opacity: 0.35;
+}
+
+/* current: accent ring */
+.current .node {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  box-shadow: 0 0 0 4px var(--accent-soft);
+}
+.current .label {
+  color: var(--text);
+  font-weight: 600;
+}
+.current::before {
+  background: var(--accent);
+  opacity: 0.35;
+}
+
+/* bad: gateway refused */
+.bad .node {
+  background: var(--bad);
+  border-color: var(--bad);
+  color: #fff;
+  box-shadow: 0 0 0 4px var(--bad-soft);
+}
+.bad .label {
+  color: var(--bad);
+  font-weight: 600;
+}
+.bad::before {
+  background: var(--bad);
+  opacity: 0.5;
+}
+
+/* good: verified end state */
+.good .node {
+  background: var(--good);
+  border-color: var(--good);
+  color: #fff;
+  box-shadow: 0 0 0 4px var(--good-soft);
+}
+.good .label {
+  color: var(--good);
+  font-weight: 600;
+}
+.good::before {
+  background: var(--good);
+  opacity: 0.5;
+}
+
+.caption {
+  margin: 12px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.phase {
+  font-family: var(--mono);
+  letter-spacing: 0.04em;
+  color: var(--text);
+}
