@@ -10,8 +10,7 @@ export function TopBar() {
         </a>
         <a href="/#console">Console</a>
         <a href="/architecture">Architecture</a>
-        <a href="/#policy">Policy</a>
-        <a href="/#audit">Audit</a>
+        <a href="/changelog">Changelog</a>
         <a href="https://github.com/opx0/labx" target="_blank" rel="noreferrer">
           GitHub
         </a>

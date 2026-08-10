@@ -328,7 +328,7 @@ export default async function Page() {
         )}
 
         {!isFirstRun && (
-          <section className="workbench" id="console">
+          <section className="workbench" id="workbench">
             {drifted && (
               <SafetyRunSummary
                 approvedContext={s.approvedContext}
