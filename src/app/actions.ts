@@ -33,6 +33,23 @@ export async function proposeAction(formData: FormData) {
   await run(() => engine.propose(target, actionType, params));
 }
 
+/**
+ * The shortest honest proof of the product claim. This is deliberately a
+ * sequence of the same domain calls exposed by the manual controls below;
+ * it does not bypass policy, approval, the Gateway, or DataHub.
+ */
+export async function runSafetyTestAction() {
+  await run(async () => {
+    await engine.reset();
+    await engine.propose(TARGETS.customer_prod, "CHANGE_LIFECYCLE", {
+      lifecycle: "DEPRECATED",
+    });
+    await engine.approve();
+    await engine.injectDrift();
+    await engine.execute();
+  });
+}
+
 export async function approveAction() {
   await run(() => engine.approve());
 }

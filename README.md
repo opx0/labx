@@ -207,15 +207,14 @@ The golden scenario is the DataHub end-to-end check; it deliberately mutates the
 ## Architecture
 
 ```text
-intent
-  → agent proposes a structured action
-  → context passport is built from DataHub aspect reads
-  → deterministic policy returns ALLOW / REVIEW / BLOCK
-  → approved action receives a short-lived signed authorization
-  → Gateway re-reads context immediately before mutation
-  → fingerprint mismatch blocks the attempt
-  → provider state is read back for verification
+intent → passport + policy (ALLOW / REVIEW / BLOCK) → human approval
+       → signed single-use authorization → Gateway (15 checks, re-reads DataHub)
+       → verified mutation — or permanent invalidation on drift
 ```
+
+**The full interactive architecture — deployment topology, all 15 Gateway checks in execution
+order, the authorization state machine, and the evidence chain — lives at
+[app.opxz.dev/architecture](https://app.opxz.dev/architecture).**
 
 | Responsibility | Location |
 |---|---|
