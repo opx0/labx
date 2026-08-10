@@ -68,6 +68,7 @@ export type ScenarioState = {
   authorizationLabel: string | null;
   authorizationExpiresAt: number | null;
   lastResult: GatewayResult | null;
+  agentExplanation: string | null;
   events: AuditEvent[];
   authCounter: number;
 };
@@ -87,6 +88,7 @@ function freshState(): ScenarioState {
     authorizationLabel: null,
     authorizationExpiresAt: null,
     lastResult: null,
+    agentExplanation: null,
     events: [],
     authCounter: 0,
   };

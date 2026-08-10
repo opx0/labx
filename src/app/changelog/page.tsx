@@ -48,12 +48,159 @@ function execTone(outcome: string): string {
   return "warn";
 }
 
+function Entry({ a }: { a: Actions[number] }) {
+  const pd = a.policyDecisions[0];
+  const approval = a.approvals.find((ap) => ap.status !== "PENDING");
+  const auth = a.authorizations[a.authorizations.length - 1];
+  const exec = a.authorizations
+    .flatMap((z) => z.executions)
+    .sort((x, y) => y.startedAt.getTime() - x.startedAt.getTime())[0];
+  const receipt = exec?.receipt;
+  const fpMismatch =
+    auth && receipt ? auth.passportFingerprint !== receipt.fingerprintAtExecution : false;
+
+  return (
+    <details className="cl-card">
+      <summary className="cl-head">
+        <span className="cl-time">
+          {a.createdAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+        </span>
+        <span className="cl-type">{a.type}</span>
+        <span className="cl-target">on {shortTarget(a.target)}</span>
+        <span className="cl-right">
+          {pd && <span className={`pill ${pd.decision}`}>{pd.decision}</span>}
+          {exec && <span className={`cl-chip ${execTone(exec.outcome)}`}>{exec.outcome}</span>}
+          <span className="cl-caret" aria-hidden>
+            ▾
+          </span>
+        </span>
+      </summary>
+
+      <div className="cl-body">
+        <div className="cl-params">{JSON.stringify(a.params)}</div>
+
+        {pd && (
+          <div className="cl-row">
+            <span className="cl-label">policy</span>
+            <span>
+              {pd.policyId} v{pd.policyVersion} · risk {pd.risk}
+            </span>
+          </div>
+        )}
+        {pd && pd.reasons.length > 0 && (
+          <ul className="cl-reasons">
+            {pd.reasons.map((r) => (
+              <li key={r}>{r}</li>
+            ))}
+          </ul>
+        )}
+
+        <div className="cl-row">
+          <span className="cl-label">approval</span>
+          {approval ? (
+            <span>
+              {approval.status === "APPROVED" ? "approved" : "rejected"} by{" "}
+              <span className="cl-who">{approval.approver}</span>
+              {approval.decidedAt && ` · ${approval.decidedAt.toLocaleString()}`}
+            </span>
+          ) : pd?.decision === "BLOCK" ? (
+            <span>blocked by policy — never reached a human</span>
+          ) : (
+            <span>awaiting approval</span>
+          )}
+        </div>
+
+        {auth && (
+          <div className="cl-row">
+            <span className="cl-label">authorization</span>
+            <span>
+              <span className="cl-who">{auth.id.slice(0, 8)}</span>{" "}
+              <span className={`cl-chip ${AUTH_TONE[auth.state] ?? ""}`}>{auth.state}</span> ·
+              expires {auth.expiresAt.toLocaleString()}
+            </span>
+          </div>
+        )}
+
+        {auth && receipt && (
+          <div className="cl-fps">
+            <div>
+              <div className="cl-fp-label">approved world</div>
+              <div className="cl-fp">{auth.passportFingerprint.slice(0, 16)}</div>
+            </div>
+            <div>
+              <div className="cl-fp-label">world at execution</div>
+              <div className={`cl-fp${fpMismatch ? " bad" : ""}`}>
+                {receipt.fingerprintAtExecution.slice(0, 16)}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {receipt && (
+          <div className="cl-row">
+            <span className="cl-label">postcondition</span>
+            <span>{receipt.postcondition}</span>
+          </div>
+        )}
+        {exec?.errorCode && (
+          <div className="cl-row">
+            <span className="cl-label">error</span>
+            <span className="cl-error">{exec.errorCode}</span>
+          </div>
+        )}
+
+        <a
+          className="cl-link"
+          href={`https://catalog.opxz.dev/dataset/${encodeURIComponent(a.target)}`}
+          target="_blank"
+          rel="noreferrer"
+        >
+          View in catalog →
+        </a>
+      </div>
+    </details>
+  );
+}
+
 export default async function ChangelogPage() {
   let actions: Actions | null = null;
   try {
     actions = await loadActions();
   } catch {
     actions = null;
+  }
+
+  const execs = actions?.flatMap((a) => a.authorizations.flatMap((z) => z.executions)) ?? [];
+  const auths = actions?.flatMap((a) => a.authorizations) ?? [];
+  const stats = [
+    { label: "Governed actions", value: actions?.length ?? 0, tone: "" },
+    {
+      label: "Verified successes",
+      value: execs.filter((e) => e.outcome === "VERIFIED_SUCCESS").length,
+      tone: "good",
+    },
+    {
+      label: "Refusals",
+      value: execs.filter((e) => e.outcome === "REFUSED").length,
+      tone: "bad",
+    },
+    {
+      label: "Authority invalidated",
+      value: auths.filter((z) => z.state === "INVALIDATED" || z.state === "REVOKED").length,
+      tone: "bad",
+    },
+  ];
+
+  const groups: { day: string; items: Actions }[] = [];
+  for (const a of actions ?? []) {
+    const day = a.createdAt.toLocaleDateString("en-GB", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    });
+    const last = groups[groups.length - 1];
+    if (last?.day === day) last.items.push(a);
+    else groups.push({ day, items: [a] });
   }
 
   return (
@@ -69,6 +216,17 @@ export default async function ChangelogPage() {
           </p>
         </header>
 
+        {actions !== null && actions.length > 0 && (
+          <div className="cl-stats">
+            {stats.map((s) => (
+              <div className="cl-stat" key={s.label}>
+                <div className={`cl-stat-num ${s.tone}`}>{s.value}</div>
+                <div className="cl-stat-label">{s.label}</div>
+              </div>
+            ))}
+          </div>
+        )}
+
         {actions === null ? (
           <div className="panel">
             <div className="empty">Changelog unavailable — database unreachable.</div>
@@ -81,63 +239,14 @@ export default async function ChangelogPage() {
           </div>
         ) : (
           <div className="cl-feed">
-            {actions.map((a) => {
-              const pd = a.policyDecisions[0];
-              const approval = a.approvals.find((ap) => ap.status !== "PENDING");
-              const auth = a.authorizations[a.authorizations.length - 1];
-              const exec = a.authorizations
-                .flatMap((z) => z.executions)
-                .sort((x, y) => y.startedAt.getTime() - x.startedAt.getTime())[0];
-              return (
-                <article className="cl-card" key={a.id}>
-                  <div className="cl-head">
-                    <span className="cl-time">{a.createdAt.toLocaleString()}</span>
-                    <span className="cl-type">{a.type}</span>
-                    <span className="cl-target">on {shortTarget(a.target)}</span>
-                    {pd && (
-                      <span className="cl-right">
-                        <span className={`pill ${pd.decision}`}>{pd.decision}</span>
-                        <span className="cl-risk">risk: {pd.risk}</span>
-                      </span>
-                    )}
-                  </div>
-                  <div className="cl-params">{JSON.stringify(a.params)}</div>
-                  <div className="cl-evidence">
-                    {approval ? (
-                      <span>
-                        {approval.status === "APPROVED" ? "approved" : "rejected"} by{" "}
-                        <span className="cl-who">{approval.approver}</span>
-                      </span>
-                    ) : pd?.decision === "BLOCK" ? (
-                      <span>blocked by policy — never reached a human</span>
-                    ) : (
-                      <span>awaiting approval</span>
-                    )}
-                    {auth && (
-                      <span className={`cl-chip ${AUTH_TONE[auth.state] ?? ""}`}>{auth.state}</span>
-                    )}
-                    {exec && (
-                      <>
-                        <span className={`cl-chip ${execTone(exec.outcome)}`}>
-                          {exec.outcome}
-                          {exec.outcome === "REFUSED" && exec.errorCode
-                            ? ` · ${exec.errorCode}`
-                            : ""}
-                        </span>
-                        {exec.receipt && (
-                          <>
-                            <span className="cl-post">{exec.receipt.postcondition}</span>
-                            <span className="cl-fp">
-                              fp {exec.receipt.fingerprintAtExecution.slice(0, 16)}
-                            </span>
-                          </>
-                        )}
-                      </>
-                    )}
-                  </div>
-                </article>
-              );
-            })}
+            {groups.map((g) => (
+              <section key={g.day}>
+                <h2 className="cl-day">{g.day}</h2>
+                {g.items.map((a) => (
+                  <Entry a={a} key={a.id} />
+                ))}
+              </section>
+            ))}
           </div>
         )}
 

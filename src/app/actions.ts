@@ -30,7 +30,11 @@ export async function proposeAction(formData: FormData) {
       : actionType === "UPDATE_DESCRIPTION"
         ? { description: "Retired by governed agent" }
         : { tag: "Deprecated" };
-  await run(() => engine.propose(target, actionType, params));
+  await run(async () => {
+    await engine.propose(target, actionType, params);
+    // Manual proposals must not display a stale agent rationale.
+    engine.state.agentExplanation = null;
+  });
 }
 
 /**
@@ -103,5 +107,7 @@ export async function askAgentAction(formData: FormData) {
     });
     if (proposal)
       await engine.propose(TARGETS[proposal.targetKey], proposal.actionType, proposal.params);
+    // propose() rebuilds state from freshState(), so set the rationale after it.
+    engine.state.agentExplanation = explanation.trim().slice(0, 1200) || null;
   });
 }

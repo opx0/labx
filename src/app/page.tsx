@@ -366,6 +366,12 @@ export default async function Page() {
                         <small>It can read DataHub and propose, but cannot change it</small>
                       </SubmitButton>
                     </form>
+                    {s.agentExplanation !== null && (
+                      <details className="agent-reasoning">
+                        <summary>Agent reasoning</summary>
+                        <p>{s.agentExplanation}</p>
+                      </details>
+                    )}
                     <p className="note">
                       The agent can inspect DataHub and propose an action. It has no tool that
                       mutates DataHub.
