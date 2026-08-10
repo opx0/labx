@@ -738,10 +738,10 @@ export default function ArchitecturePage() {
         {/* ---------------------------------------------- evidence chain -- */}
         <h2 className="arch-h2">The evidence chain</h2>
         <p className="arch-sub">
-          Action, Passport, PolicyDecision, Approval, and Authorization are written in one
-          Postgres transaction. Execution and Receipt follow in their own transaction; audit events
-          link the hops. A judge can reconstruct who asked, what the world looked like, who
-          approved, and what happened.
+          Action, Passport, PolicyDecision, Approval, and Authorization are written in one Postgres
+          transaction. Execution and Receipt follow in their own transaction; audit events link the
+          hops. A judge can reconstruct who asked, what the world looked like, who approved, and
+          what happened.
         </p>
         <div className="chain">
           {CHAIN.map(([name, table, why], i) => (
@@ -782,10 +782,16 @@ export default function ArchitecturePage() {
             <div className="trust-card limit">
               <h3>Demo constraints</h3>
               <ul>
-                <li>Agent runtime and Gateway share one DataHub token in this single-process demo.</li>
+                <li>
+                  Agent runtime and Gateway share one DataHub token in this single-process demo.
+                </li>
                 <li>The approver identity is configured; the console has no approver login.</li>
-                <li>Dependency counts cover the discovered candidate set, not every possible entity.</li>
-                <li>The isolated drift fixture can mutate DataHub to simulate an external actor.</li>
+                <li>
+                  Dependency counts cover the discovered candidate set, not every possible entity.
+                </li>
+                <li>
+                  The isolated drift fixture can mutate DataHub to simulate an external actor.
+                </li>
               </ul>
             </div>
           </div>

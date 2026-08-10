@@ -257,11 +257,19 @@ header.top a:hover {
   font-size: 12px;
   font-weight: 800;
 }
-.warn-number { color: var(--warn); }
-.bad-number { color: var(--bad); }
+.warn-number {
+  color: var(--warn);
+}
+.bad-number {
+  color: var(--bad);
+}
 .result-steps b,
-.result-steps span { display: block; }
-.result-steps b { font-size: 14px; }
+.result-steps span {
+  display: block;
+}
+.result-steps b {
+  font-size: 14px;
+}
 .result-steps span {
   margin-top: 1px;
   color: var(--muted);
@@ -275,17 +283,25 @@ header.top a:hover {
   flex-wrap: wrap;
   padding-top: 4px;
 }
-.result-actions form { flex: 1 1 235px; }
-.result-actions .btn { margin-top: 0; }
+.result-actions form {
+  flex: 1 1 235px;
+}
+.result-actions .btn {
+  margin-top: 0;
+}
 .result-actions > a {
   color: var(--accent);
   font-size: 14px;
   font-weight: 700;
   text-decoration: none;
 }
-.result-actions > a:hover { text-decoration: underline; }
+.result-actions > a:hover {
+  text-decoration: underline;
+}
 @media (max-width: 900px) {
-  .run-summary { grid-template-columns: 1fr; }
+  .run-summary {
+    grid-template-columns: 1fr;
+  }
 }
 
 .grid {
@@ -1107,4 +1123,71 @@ html {
   background: var(--panel-2);
   padding: 2px 7px;
   border-radius: 6px;
+}
+
+.trust-boundaries {
+  display: grid;
+  grid-template-columns: minmax(240px, 0.58fr) minmax(0, 1.42fr);
+  gap: 32px;
+  align-items: start;
+  margin-top: 44px;
+  padding: clamp(24px, 3vw, 36px);
+  border: 1px solid var(--line-strong);
+  border-radius: 20px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+.trust-boundaries h2 {
+  margin: 8px 0 10px;
+  font-size: 25px;
+  line-height: 1.14;
+  letter-spacing: -0.025em;
+}
+.trust-boundaries > div > p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 15px;
+}
+.trust-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+.trust-card {
+  padding: 18px 20px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+}
+.trust-card.prove {
+  border-color: #a7f3d0;
+  background: var(--good-soft);
+}
+.trust-card.limit {
+  border-color: #fde68a;
+  background: var(--warn-soft);
+}
+.trust-card h3 {
+  margin: 0 0 8px;
+  font-size: 15px;
+}
+.trust-card.prove h3 {
+  color: var(--good);
+}
+.trust-card.limit h3 {
+  color: var(--warn);
+}
+.trust-card ul {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 13.5px;
+  line-height: 1.55;
+}
+.trust-card li + li {
+  margin-top: 7px;
+}
+@media (max-width: 900px) {
+  .trust-boundaries,
+  .trust-grid {
+    grid-template-columns: 1fr;
+  }
 }
