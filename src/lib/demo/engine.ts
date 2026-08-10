@@ -37,6 +37,13 @@ export type AuditEvent = {
   readonly severity: "info" | "good" | "warn" | "bad";
 };
 
+export type EstateEntry = {
+  readonly urn: string;
+  readonly name: string;
+  readonly platform: string;
+  readonly env: string;
+};
+
 export type ScenarioState = {
   phase:
     | "IDLE"
@@ -49,7 +56,8 @@ export type ScenarioState = {
     | "REJECTED"
     | "REVOKED"
     | "BLOCKED";
-  targetKey: keyof typeof TARGETS;
+  targetUrn: string;
+  targetLabel: string;
   actionType: ActionType;
   params: Record<string, string>;
   decision: PolicyDecision | null;
@@ -67,7 +75,8 @@ export type ScenarioState = {
 function freshState(): ScenarioState {
   return {
     phase: "IDLE",
-    targetKey: "customer_prod",
+    targetUrn: TARGETS.customer_prod,
+    targetLabel: "customer_prod",
     actionType: "CHANGE_LIFECYCLE",
     params: { lifecycle: "DEPRECATED" },
     decision: null,
@@ -129,6 +138,37 @@ class Engine {
     return { gmsUrl, token };
   }
 
+  private estateCache: { at: number; list: EstateEntry[] } | null = null;
+
+  /** The governable estate, discovered live from DataHub — nothing hard-coded.
+      Feeds the console dropdown AND the critical-dependency candidate set. */
+  async estate(): Promise<EstateEntry[]> {
+    if (this.estateCache && Date.now() - this.estateCache.at < 30_000) {
+      return this.estateCache.list;
+    }
+    try {
+      const list = await this.client().listDatasets();
+      this.estateCache = { at: Date.now(), list };
+      return list;
+    } catch {
+      return (
+        this.estateCache?.list ??
+        Object.entries(TARGETS).map(([name, urn]) => ({
+          urn,
+          name,
+          platform: "demo",
+          env: urn.endsWith("DEV)") ? "DEV" : "PROD",
+        }))
+      );
+    }
+  }
+
+  /** Candidate set for downstream counting: every discovered dataset except the target. */
+  private candidates(target: string): string[] {
+    const discovered = (this.estateCache?.list ?? []).map((e) => e.urn).filter((u) => u !== target);
+    return [...new Set([...discovered, ...CANDIDATES])];
+  }
+
   private client() {
     return new DataHubClient(this.config());
   }
@@ -153,7 +193,7 @@ class Engine {
       publicKeyPem: this.keys.publicKeyPem,
       policy: { policyId: DEFAULT_POLICY_SET.id, policyVersion: DEFAULT_POLICY_SET.version },
       now: () => Date.now(),
-      candidatesFor: () => CANDIDATES,
+      candidatesFor: (target: string) => this.candidates(target),
     };
   }
 
@@ -169,12 +209,16 @@ class Engine {
     return this.state;
   }
 
-  async propose(
-    targetKey: keyof typeof TARGETS,
-    actionType: ActionType,
-    params: Record<string, string>,
-  ) {
-    const target = TARGETS[targetKey];
+  async propose(targetUrn: string, actionType: ActionType, params: Record<string, string>) {
+    // The estate is discovered from DataHub, not declared — but a proposal
+    // must still name something DataHub actually knows.
+    const estate = await this.estate();
+    const entry = estate.find((e) => e.urn === targetUrn);
+    if (!entry) {
+      this.log("VALIDATION_ERROR", `unknown target: ${targetUrn}`, "bad");
+      return this.state;
+    }
+    const target = entry.urn;
     const parsed = validateAction(actionType, target, params);
     if (!parsed.ok) {
       this.log("VALIDATION_ERROR", parsed.errors.join("; "), "bad");
@@ -184,15 +228,22 @@ class Engine {
     // matches what the Gateway recomputes.
     params = parsed.action.params;
 
-    this.state = { ...freshState(), events: this.state.events, targetKey, actionType, params };
-    this.log("ACTION_PROPOSED", `${actionType} on ${targetKey}`, "info");
+    this.state = {
+      ...freshState(),
+      events: this.state.events,
+      targetUrn: target,
+      targetLabel: entry.name,
+      actionType,
+      params,
+    };
+    this.log("ACTION_PROPOSED", `${actionType} on ${entry.name}`, "info");
 
     const def = ACTION_REGISTRY[actionType];
     this.deps_fields = contextDependenciesFor(DEFAULT_POLICY_SET, actionType, def.requiresContext);
     this.actionHash = await hashRecord({ type: actionType, target, ...params });
 
     const client = this.client();
-    const ctx = await client.readContext(target, this.deps_fields, CANDIDATES);
+    const ctx = await client.readContext(target, this.deps_fields, this.candidates(target));
     const fp = await fingerprint(ctx, this.deps_fields);
     this.log(
       "PASSPORT_CREATED",
@@ -237,7 +288,7 @@ class Engine {
         id: randomUUID(),
         principal: PRINCIPAL,
         actionType: s.actionType,
-        target: TARGETS[s.targetKey],
+        target: s.targetUrn,
         actionHash: this.actionHash,
         passportFingerprint: s.approvedFingerprint,
         policyId: s.decision.policyId,
@@ -253,7 +304,7 @@ class Engine {
       principal: PRINCIPAL,
       approver: APPROVER,
       actionType: s.actionType,
-      target: TARGETS[s.targetKey],
+      target: s.targetUrn,
       params: s.params,
       actionHash: this.actionHash,
       context: s.approvedContext ?? {},
@@ -292,7 +343,7 @@ class Engine {
       approver: APPROVER,
       approvalId: randomUUID(),
       actionType: s.actionType,
-      target: TARGETS[s.targetKey],
+      target: s.targetUrn,
       params: s.params,
       actionHash: this.actionHash,
       context: s.approvedContext ?? {},
@@ -360,7 +411,11 @@ class Engine {
     const s = this.state;
     if (this.deps_fields.length === 0) return s;
     const client = this.client();
-    const ctx = await client.readContext(TARGETS[s.targetKey], this.deps_fields, CANDIDATES);
+    const ctx = await client.readContext(
+      s.targetUrn,
+      this.deps_fields,
+      this.candidates(s.targetUrn),
+    );
     s.currentContext = ctx;
     try {
       s.currentFingerprint = await fingerprint(ctx, this.deps_fields);
@@ -378,7 +433,7 @@ class Engine {
       authorization: this.auth,
       principal: PRINCIPAL,
       actionType: s.actionType,
-      target: TARGETS[s.targetKey],
+      target: s.targetUrn,
       params: s.params,
       contextDependencies: this.deps_fields,
       approvedContext: s.approvedContext ?? undefined,
@@ -470,7 +525,7 @@ class Engine {
     this.log("ACTION_REPLANNED", "Agent re-evaluates against the changed world", "info");
     this.auth = null;
     s.lastResult = null;
-    return this.propose(s.targetKey, s.actionType, s.params);
+    return this.propose(s.targetUrn, s.actionType, s.params);
   }
 }
 

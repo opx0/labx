@@ -1,4 +1,4 @@
-import { engine } from "@/lib/demo/engine";
+import { engine, TARGETS } from "@/lib/demo/engine";
 import type { Context, ContextValue } from "@/lib/domain/context";
 import { DEFAULT_POLICY_SET } from "@/lib/domain/policy";
 import {
@@ -73,9 +73,10 @@ function ContextTable({
 
 export default async function Page() {
   await engine.hydrate();
-  const s = engine.state;
+  const [s, estate] = [engine.state, await engine.estate()];
   const drifted = s.phase === "DRIFT_DETECTED";
   const hasAuth = s.phase === "AUTHORIZED";
+  const canDrift = hasAuth && s.targetUrn === TARGETS.customer_prod;
   const canReplan = drifted || s.phase === "REJECTED" || s.phase === "REVOKED";
 
   return (
@@ -202,11 +203,15 @@ export default async function Page() {
           <div className="panel" style={{ marginTop: 14 }}>
             <h2>Or propose directly</h2>
             <form action={proposeAction}>
-              <label htmlFor="target">Target</label>
-              <select id="target" name="target" defaultValue={s.targetKey}>
-                <option value="customer_prod">customer_prod — PROD, PII, Finance</option>
-                <option value="analytics_test">analytics_test — DEV, no tags</option>
-                <option value="regulated_core">regulated_core — Protected</option>
+              <label htmlFor="target">
+                Target — {estate.length} datasets discovered live from DataHub
+              </label>
+              <select id="target" name="target" defaultValue={s.targetUrn}>
+                {estate.map((e) => (
+                  <option key={e.urn} value={e.urn}>
+                    {e.name} — {e.platform}/{e.env}
+                  </option>
+                ))}
               </select>
               <label htmlFor="actionType">Action</label>
               <select id="actionType" name="actionType" defaultValue={s.actionType}>
@@ -247,11 +252,11 @@ export default async function Page() {
             <form action={injectDriftAction}>
               <SubmitButton
                 className="btn warn"
-                disabled={!hasAuth}
+                disabled={!canDrift}
                 pendingLabel="Mutating DataHub lineage…"
               >
                 Change the world
-                <small>Adds a 3rd critical dependency in DataHub</small>
+                <small>Adds a 3rd critical dependency to customer_prod</small>
               </SubmitButton>
             </form>
             <form action={executeAction}>
@@ -301,7 +306,7 @@ export default async function Page() {
                 action <b>{s.actionType}</b>
               </span>
               <span>
-                target <b>{s.targetKey}</b>
+                target <b>{s.targetLabel}</b>
               </span>
               <span>
                 phase <b>{s.phase}</b>

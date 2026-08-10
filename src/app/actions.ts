@@ -3,7 +3,7 @@
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { runAgent } from "@/lib/agent/agent";
-import { engine, type TARGETS } from "@/lib/demo/engine";
+import { engine, TARGETS } from "@/lib/demo/engine";
 import type { ActionType } from "@/lib/domain/actions";
 
 async function run<T>(fn: () => Promise<T>) {
@@ -22,7 +22,7 @@ async function run<T>(fn: () => Promise<T>) {
 }
 
 export async function proposeAction(formData: FormData) {
-  const target = String(formData.get("target") ?? "customer_prod") as keyof typeof TARGETS;
+  const target = String(formData.get("target") ?? TARGETS.customer_prod);
   const actionType = String(formData.get("actionType") ?? "CHANGE_LIFECYCLE") as ActionType;
   const params: Record<string, string> =
     actionType === "CHANGE_LIFECYCLE"
@@ -84,6 +84,7 @@ export async function askAgentAction(formData: FormData) {
       detail: explanation.replace(/\s+/g, " ").slice(0, 220),
       severity: proposal ? "info" : "warn",
     });
-    if (proposal) await engine.propose(proposal.targetKey, proposal.actionType, proposal.params);
+    if (proposal)
+      await engine.propose(TARGETS[proposal.targetKey], proposal.actionType, proposal.params);
   });
 }

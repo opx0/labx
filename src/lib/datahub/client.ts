@@ -53,6 +53,31 @@ export class DataHubClient {
     };
   }
 
+  /** Live estate discovery: every dataset DataHub knows, straight from GMS. */
+  async listDatasets(
+    count = 100,
+  ): Promise<{ urn: string; name: string; platform: string; env: string }[]> {
+    const res = await fetch(
+      `${this.config.gmsUrl}/openapi/v3/entity/dataset?count=${count}&aspects=datasetKey`,
+      { headers: this.headers },
+    );
+    if (!res.ok) throw new DataHubError("dataset listing failed", res.status);
+    const body = (await res.json()) as {
+      entities?: { urn: string; datasetKey?: { value?: Record<string, unknown> } }[];
+    };
+    return (body.entities ?? [])
+      .map((e) => {
+        const k = e.datasetKey?.value ?? {};
+        return {
+          urn: e.urn,
+          name: typeof k.name === "string" ? k.name : e.urn,
+          platform: String(k.platform ?? "").replace("urn:li:dataPlatform:", ""),
+          env: typeof k.origin === "string" ? k.origin : "?",
+        };
+      })
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }
+
   async readAspects(urn: string, aspects: readonly string[]): Promise<Aspects | null> {
     const q = aspects.map((a) => `aspects=${encodeURIComponent(a)}`).join("&");
     const res = await fetch(
