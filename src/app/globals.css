@@ -747,3 +747,13 @@ html {
   font-weight: 600;
   text-decoration: none;
 }
+
+.wire-anim {
+  stroke-dasharray: 6 6;
+  animation: wireFlow 1.4s linear infinite;
+}
+@keyframes wireFlow {
+  to {
+    stroke-dashoffset: -24;
+  }
+}

@@ -215,6 +215,25 @@ function Chip({ x, y, label }: { x: number; y: number; label: string }) {
   );
 }
 
+function Badge({ x, y, n }: { x: number; y: number; n: string }) {
+  return (
+    <g>
+      <circle cx={x} cy={y} r={11} fill="var(--accent-soft)" stroke="var(--accent)" />
+      <text
+        x={x}
+        y={y + 3.5}
+        textAnchor="middle"
+        fontSize="9.5"
+        fontWeight="700"
+        fontFamily="var(--mono)"
+        fill="var(--accent)"
+      >
+        {n}
+      </text>
+    </g>
+  );
+}
+
 const wire = "var(--wire)";
 
 export default function ArchitecturePage() {
@@ -236,7 +255,7 @@ export default function ArchitecturePage() {
         </header>
 
         <div className="diagram-wrap">
-          <svg viewBox="0 0 1160 560" role="img" aria-label="DataHubX authority path diagram">
+          <svg viewBox="0 0 1160 520" role="img" aria-label="DataHubX authority path diagram">
             {/* entry -> passport curves */}
             <path
               d={`M 210 118 C 280 118, 280 172, 330 186`}
@@ -291,14 +310,14 @@ export default function ArchitecturePage() {
             />
             {/* out-of-band -> gateway, gateway -> drift */}
             <path
-              d={`M 500 458 C 640 458, 760 330, 800 282`}
+              className="wire-anim"
+              d={`M 560 443 C 690 443, 770 320, 804 276`}
               fill="none"
               stroke={wire}
               strokeWidth="2"
-              strokeDasharray="5 5"
             />
             <path
-              d={`M 840 282 C 880 350, 900 420, 940 452`}
+              d={`M 843 274 C 888 340, 896 392, 936 430`}
               fill="none"
               stroke="#fca5a5"
               strokeWidth="2"
@@ -318,11 +337,11 @@ export default function ArchitecturePage() {
             <Hex
               cx={390}
               cy={198}
-              r={76}
+              r={82}
               title="Passport"
-              sub="SHA-256 over declared fields|policy: ALLOW · REVIEW · BLOCK"
+              sub="SHA-256 fingerprint|ALLOW · REVIEW · BLOCK"
             />
-            <Chip x={268} y={152} label="aspect reads by URN" />
+            <Chip x={266} y={240} label="aspect reads by URN" />
 
             {/* approval */}
             <Node
@@ -378,8 +397,6 @@ export default function ArchitecturePage() {
                 SINGLE USE · 15 MIN · ED25519
               </text>
             </g>
-            <Chip x={712} y={172} label="signed claims" />
-
             {/* gateway */}
             <Hex
               cx={815}
@@ -415,18 +432,26 @@ export default function ArchitecturePage() {
             <Node x={952} y={170} w={182} title="Postgres" sub="ACTIVE → CONSUMED · atomic" />
             <Node x={952} y={250} w={182} title="Receipt" sub="verified outcome + provenance" />
 
+            {/* step badges — same numbers as the cards below */}
+            <Badge x={245} y={74} n="01" />
+            <Badge x={390} y={100} n="02" />
+            <Badge x={597} y={152} n="03" />
+            <Badge x={392} y={395} n="04" />
+            <Badge x={914} y={396} n="05" />
+            <Badge x={925} y={266} n="06" />
+
             {/* drift row */}
             <Node
-              x={300}
-              y={430}
+              x={360}
+              y={415}
               w={200}
               title="World changes"
               sub="out of band — dbt job, another team"
             />
-            <Chip x={700} y={392} label="fingerprint mismatch" />
+            <Chip x={726} y={368} label="fingerprint mismatch" />
             <Node
               x={940}
-              y={424}
+              y={408}
               w={200}
               h={60}
               tone="bad"
