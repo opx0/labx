@@ -200,7 +200,7 @@ export default async function Page() {
             </p>
           </div>
 
-          <div className="panel" style={{ marginTop: 14 }}>
+          <div className="panel" style={{ marginTop: 28 }}>
             <h2>Or propose directly</h2>
             <form action={proposeAction}>
               <label htmlFor="target">
@@ -229,7 +229,7 @@ export default async function Page() {
             </form>
           </div>
 
-          <div className="panel" style={{ marginTop: 14 }}>
+          <div className="panel" style={{ marginTop: 28 }}>
             <h2>Govern</h2>
             <form action={approveAction}>
               <SubmitButton
@@ -322,7 +322,7 @@ export default async function Page() {
               <>
                 <div className="decision">
                   <span className={`pill ${s.decision.decision}`}>{s.decision.decision}</span>
-                  <span style={{ color: "var(--muted)", fontSize: 13 }}>
+                  <span style={{ color: "var(--muted)", fontSize: 15 }}>
                     risk {s.decision.risk} · policy {s.decision.policyId} v
                     {s.decision.policyVersion}
                   </span>
@@ -337,7 +337,7 @@ export default async function Page() {
               </>
             )}
 
-            <div className="cmp" style={{ marginTop: 16 }}>
+            <div className="cmp" style={{ marginTop: 20 }}>
               <ContextTable
                 title="Approved context"
                 context={s.approvedContext}
@@ -359,7 +359,7 @@ export default async function Page() {
             )}
           </div>
 
-          <div className="panel" style={{ marginTop: 14 }}>
+          <div className="panel" style={{ marginTop: 28 }}>
             <h2>
               Policy in force — {DEFAULT_POLICY_SET.id} v{DEFAULT_POLICY_SET.version}
             </h2>
@@ -378,7 +378,7 @@ export default async function Page() {
                     </td>
                     <td className="v">
                       {r.description}
-                      <div style={{ color: "var(--muted)", fontSize: 12 }}>
+                      <div style={{ color: "var(--muted)", fontSize: 13.5 }}>
                         depends on: {r.dependsOn.join(", ")} · risk {r.risk}
                       </div>
                     </td>
@@ -388,7 +388,7 @@ export default async function Page() {
             </table>
           </div>
 
-          <div className="panel timeline" style={{ marginTop: 14 }}>
+          <div className="panel timeline" style={{ marginTop: 28 }}>
             <h2>Audit timeline</h2>
             <p className="note">
               Every event is persisted to Postgres with links to the action, approval, authorization
